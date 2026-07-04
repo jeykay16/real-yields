@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Real Yields of Major Currencies</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --card: #171e2e;
+    --border: #263048;
+    --text: #e8ecf4;
+    --muted: #8b95ab;
+    --pos: #34d399;
+    --neg: #f87171;
+    --accent: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 26px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .toolbar {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 16px; flex-wrap: wrap;
+  }
+  button {
+    background: var(--accent); color: #0b1020; border: none;
+    padding: 8px 18px; border-radius: 8px; font-size: 14px;
+    font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: wait; }
+  .status { color: var(--muted); font-size: 13px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; overflow-x: auto;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 10px 12px; text-align: right; white-space: nowrap; }
+  th {
+    background: #1b2438; color: var(--muted); font-weight: 600;
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+    cursor: pointer; user-select: none;
+  }
+  th:hover { color: var(--text); }
+  th.sorted { color: var(--accent); }
+  td:first-child, th:first-child,
+  td:nth-child(2), th:nth-child(2) { text-align: left; }
+  tr { border-top: 1px solid var(--border); }
+  tbody tr:hover { background: #1c2540; }
+  .ccy { font-weight: 700; }
+  .period { color: var(--muted); font-size: 12px; }
+  .pos { color: var(--pos); }
+  .neg { color: var(--neg); }
+  .barcell { width: 220px; min-width: 140px; }
+  .bar-track { display: flex; height: 14px; }
+  .bar-half { flex: 1; position: relative; }
+  .bar-neg-fill { position: absolute; right: 0; top: 0; height: 100%;
+    background: var(--neg); border-radius: 3px 0 0 3px; }
+  .bar-pos-fill { position: absolute; left: 0; top: 0; height: 100%;
+    background: var(--pos); border-radius: 0 3px 3px 0; }
+  .bar-half.left { border-right: 1px solid var(--border); }
+  .note { color: var(--muted); font-size: 12px; margin-top: 14px; line-height: 1.6; }
+  .gold { margin-top: 16px; padding: 18px 20px; }
+  .gold h2 {
+    margin: 0; font-size: 17px; font-weight: 650;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .badge { padding: 4px 14px; border-radius: 999px; font-size: 14px; font-weight: 700; }
+  .badge.bull { background: rgba(52, 211, 153, .12); color: var(--pos); border: 1px solid var(--pos); }
+  .badge.bear { background: rgba(248, 113, 113, .12); color: var(--neg); border: 1px solid var(--neg); }
+  .badge.neut { background: rgba(139, 149, 171, .12); color: var(--muted); border: 1px solid var(--muted); }
+  .gold-stats { display: flex; gap: 28px; flex-wrap: wrap; margin: 14px 0 4px; }
+  .gold-stat .v { font-size: 20px; font-weight: 700; }
+  .gold-stat .k { color: var(--muted); font-size: 12px; }
+  .gold p { margin: 10px 0 0; font-size: 13px; line-height: 1.6; }
+  .gold .disclaimer { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .factors { list-style: none; margin: 12px 0 0; padding: 0; }
+  .factors li {
+    display: flex; gap: 10px; align-items: baseline; padding: 7px 0;
+    border-top: 1px solid var(--border); font-size: 13px; line-height: 1.5;
+  }
+  .factor-tag {
+    flex: 0 0 92px; font-weight: 700; font-size: 12px; text-align: left;
+  }
+  .factor-tag.pos { color: var(--pos); }
+  .factor-tag.neg { color: var(--neg); }
+  .factor-tag.neut { color: var(--muted); }
+  .nav { margin: 0 0 18px; display: flex; gap: 14px; font-size: 14px; }
+  .nav a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .nav a:hover { text-decoration: underline; }
+  .nav .here { color: var(--muted); font-weight: 600; }
+  .filters {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .filters .label { color: var(--muted); font-size: 13px; margin-right: 4px; }
+  #chips { display: contents; }
+  .chip {
+    background: #1b2438; border: 1px solid var(--border); color: var(--text);
+    padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    cursor: pointer; user-select: none;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #0b1020; }
+  .chip-action {
+    background: none; border: none; color: var(--accent); font-size: 13px;
+    cursor: pointer; padding: 4px 6px; font-weight: 600;
+  }
+  .chip-action:hover { text-decoration: underline; }
+  #error {
+    display: none; background: #3a1d24; border: 1px solid #7f2f3d;
+    color: #fda4af; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .loading td { text-align: center !important; color: var(--muted); padding: 40px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Real Yields of Major Currencies</h1>
+  <div class="sub">10-year government bond yield minus latest CPI inflation (year-over-year) &middot; live from the OECD API</div>
+
+  <div class="nav">
+    <span class="here">Real yields</span>
+    <a href="meetings.html">Rate meetings &rarr;</a>
+  </div>
+
+  <div class="toolbar">
+    <button id="refreshBtn" onclick="load()">Refresh now</button>
+    <span class="status" id="status">Loading&hellip;</span>
+  </div>
+
+  <div class="filters" id="filters">
+    <span class="label">Show:</span>
+    <span id="chips"></span>
+    <button class="chip-action" onclick="setAll(true)">All</button>
+    <button class="chip-action" onclick="setAll(false)">None</button>
+  </div>
+
+  <div id="error"></div>
+
+  <div class="card">
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th data-k="currency">Currency</th>
+          <th data-k="name">Economy</th>
+          <th data-k="nominal">10Y Yield</th>
+          <th data-k="cpi">CPI YoY</th>
+          <th data-k="real" class="sorted">Real Yield</th>
+          <th data-k="fisher">Fisher</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr class="loading"><td colspan="7">Fetching latest data from the OECD&hellip;</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card gold" id="goldCard" style="display:none"></div>
+
+  <div class="note">
+    Real yield = nominal &minus; inflation; Fisher = (1+nominal)/(1+inflation) &minus; 1.
+    Yields are OECD long-term (10Y) government bond rates; EUR uses the euro-area
+    aggregate (EA20). The period next to each figure is the month/quarter of the
+    latest available data &mdash; CPI releases lag by one to two months, and some
+    series lag further in the OECD dataset. The page re-fetches the data every time
+    it is opened or refreshed, and once an hour while it stays open, so it always
+    shows the most recent published figures.
+    <span id="skipped"></span>
+  </div>
+
+  <div class="note">Built by <a href="https://github.com/jeykay16" style="color:var(--accent)">jeykay16</a>
+    &middot; Data: <a href="https://data-explorer.oecd.org" style="color:var(--accent)">OECD</a>
+    &amp; <a href="https://data.bis.org" style="color:var(--accent)">BIS</a>
+    &middot; <a href="https://github.com/jeykay16/real-yields" style="color:var(--accent)">Source code</a></div>
+</div>
+
+<script>
+const OECD = "https://sdmx.oecd.org/public/rest/data";
+
+const CURRENCIES = {
+  USD: ["USA", "US Dollar"],
+  EUR: ["EA20", "Euro (euro area)"],
+  JPY: ["JPN", "Japanese Yen"],
+  GBP: ["GBR", "British Pound"],
+  CHF: ["CHE", "Swiss Franc"],
+  CAD: ["CAN", "Canadian Dollar"],
+  AUD: ["AUS", "Australian Dollar"],
+  NZD: ["NZL", "New Zealand Dollar"],
+  SEK: ["SWE", "Swedish Krona"],
+  NOK: ["NOR", "Norwegian Krone"],
+  KRW: ["KOR", "South Korean Won"],
+  CNY: ["CHN", "Chinese Yuan"],
+  INR: ["IND", "Indian Rupee"],
+  BRL: ["BRA", "Brazilian Real"],
+  MXN: ["MEX", "Mexican Peso"],
+  ZAR: ["ZAF", "South African Rand"],
+  PLN: ["POL", "Polish Zloty"],
+};
+
+let rows = [];
+let sortKey = "real";
+let sortDesc = true;
+
+// which currencies are visible; remembered across visits
+let visible = new Set(Object.keys(CURRENCIES));
+try {
+  const saved = JSON.parse(localStorage.getItem("visibleCurrencies"));
+  if (Array.isArray(saved)) {
+    visible = new Set(saved.filter(c => c in CURRENCIES));
+  }
+} catch (e) { /* ignore corrupt storage */ }
+
+function saveVisible() {
+  try { localStorage.setItem("visibleCurrencies", JSON.stringify([...visible])); }
+  catch (e) { /* storage unavailable (e.g. file:// privacy mode) */ }
+}
+
+function toggleCurrency(ccy) {
+  if (visible.has(ccy)) visible.delete(ccy);
+  else visible.add(ccy);
+  saveVisible();
+  renderChips();
+  render();
+}
+
+function setAll(on) {
+  visible = on ? new Set(Object.keys(CURRENCIES)) : new Set();
+  saveVisible();
+  renderChips();
+  render();
+}
+
+function renderChips() {
+  document.getElementById("chips").innerHTML = Object.keys(CURRENCIES).map(ccy =>
+    `<span class="chip ${visible.has(ccy) ? "on" : ""}" ` +
+    `title="${CURRENCIES[ccy][1]}" onclick="toggleCurrency('${ccy}')">${ccy}</span>`
+  ).join("");
+}
+
+async function fetchCsv(url) {
+  const resp = await fetch(url);
+  if (resp.status === 404) return [];           // NoRecordsFound
+  if (!resp.ok) throw new Error(`OECD API returned HTTP ${resp.status}`);
+  const text = await resp.text();
+  if (!text.startsWith("DATAFLOW")) return [];
+  const lines = text.trim().split("\n");
+  const header = lines[0].split(",");
+  return lines.slice(1).map(line => {
+    const cells = line.split(",");
+    const row = {};
+    header.forEach((h, i) => row[h.trim()] = (cells[i] || "").trim());
+    return row;
+  });
+}
+
+// sortable key for "2026-05" or "2026-Q1" (quarter -> end month)
+function periodKey(p) {
+  let m = p.match(/(\d{4})-Q(\d)/);
+  if (m) return +m[1] * 100 + (+m[2]) * 3;
+  m = p.match(/(\d{4})-(\d{2})/);
+  if (m) return +m[1] * 100 + (+m[2]);
+  return 0;
+}
+
+// reduce rows to {area: {period, value}} keeping the latest observation;
+// monthly beats quarterly for the same period
+function latestByArea(rows) {
+  const out = {};
+  for (const r of rows) {
+    const v = parseFloat(r.OBS_VALUE);
+    if (!isFinite(v)) continue;
+    const key = periodKey(r.TIME_PERIOD) * 10 + (r.FREQ === "M" ? 1 : 0);
+    if (!(r.REF_AREA in out) || key > out[r.REF_AREA].key) {
+      out[r.REF_AREA] = { key, period: r.TIME_PERIOD, value: v };
+    }
+  }
+  return out;
+}
+
+let goldData = null;
+
+// monthly {period: value} for one area from raw SDMX CSV rows
+function monthlySeries(rws, area) {
+  const out = {};
+  for (const r of rws) {
+    if (r.REF_AREA === area && r.FREQ === "M") {
+      const v = parseFloat(r.OBS_VALUE);
+      if (isFinite(v)) out[r.TIME_PERIOD] = v;
+    }
+  }
+  return out;
+}
+
+function renderGold() {
+  const card = document.getElementById("goldCard");
+  if (!goldData) { card.style.display = "none"; return; }
+  const { nowP, prevP, nowReal, prevReal, dmAvg } = goldData;
+  const chg = nowReal - prevReal;
+
+  const fmt = v => (v >= 0 ? "+" : "") + v.toFixed(2);
+
+  // score: US real-yield level + 3-month momentum + global (G10) level,
+  // with a plain-English reason for each factor
+  const factors = [];
+
+  const levelScore = nowReal < 0 ? 2 : nowReal < 1 ? 1 : nowReal < 2 ? -1 : -2;
+  factors.push({
+    s: levelScore,
+    label: `US real yield level: ${fmt(nowReal)}%`,
+    reason:
+      nowReal < 0 ? "Bonds are losing to inflation — holding gold costs nothing in real terms, historically gold's strongest tailwind." :
+      nowReal < 1 ? "Bonds barely beat inflation, so the income you give up by holding gold instead is small." :
+      nowReal < 2 ? "Bonds pay a solid real return, so gold's lack of income becomes a real cost." :
+      "Bonds pay a high real return — a strong incentive to hold them instead of gold.",
+  });
+
+  const trendScore = chg < -0.25 ? 1 : chg > 0.25 ? -1 : 0;
+  factors.push({
+    s: trendScore,
+    label: `3-month momentum: ${fmt(chg)}pp`,
+    reason:
+      trendScore > 0 ? "Real yields are falling — the cost of holding gold is shrinking, and gold has historically rallied during such phases." :
+      trendScore < 0 ? "Real yields are rising — the cost of holding gold is growing, which has historically weighed on the gold price." :
+      "Real yields are roughly flat, so the opportunity-cost picture is not changing much either way.",
+  });
+
+  if (dmAvg !== null) {
+    const globalScore = dmAvg < 0.5 ? 1 : dmAvg > 1.5 ? -1 : 0;
+    factors.push({
+      s: globalScore,
+      label: `G10 average level: ${fmt(dmAvg)}%`,
+      reason:
+        globalScore > 0 ? "Real returns are thin across all major currencies, so there is no attractive bond market to rotate into instead of gold." :
+        globalScore < 0 ? "Comfortable real returns are available across major bond markets, giving global investors alternatives to gold." :
+        "Real returns across the majors are middling — neither starving investors of alternatives nor spoiling them.",
+    });
+  }
+
+  const score = factors.reduce((s, f) => s + f.s, 0);
+
+  const [verdict, cls] =
+    score >= 2 ? ["BULLISH for gold", "bull"] :
+    score === 1 ? ["MILDLY BULLISH for gold", "bull"] :
+    score === 0 ? ["NEUTRAL for gold", "neut"] :
+    score === -1 ? ["MILDLY BEARISH for gold", "bear"] :
+    ["BEARISH for gold", "bear"];
+
+  const level = nowReal < 0 ? "negative" : nowReal < 1 ? "low" : nowReal < 2 ? "moderate" : "high";
+  const trend = chg < -0.25 ? "falling" : chg > 0.25 ? "rising" : "roughly flat";
+  const supportive = score > 0;
+  const tag = s => s > 0 ? ["&#9650; Bullish", "pos"] : s < 0 ? ["&#9660; Bearish", "neg"] : ["&#9679; Neutral", "neut"];
+
+  card.style.display = "block";
+  card.innerHTML = `
+    <h2>Gold (XAU/USD) signal <span class="badge ${cls}">${verdict}</span></h2>
+    <div class="gold-stats">
+      <div class="gold-stat"><div class="v ${nowReal >= 0 ? "pos" : "neg"}">${fmt(nowReal)}%</div>
+        <div class="k">US 10Y real yield (${nowP})</div></div>
+      <div class="gold-stat"><div class="v ${chg <= 0 ? "pos" : "neg"}">${fmt(chg)}pp</div>
+        <div class="k">change vs ${prevP}</div></div>
+      ${dmAvg === null ? "" : `<div class="gold-stat"><div class="v ${dmAvg >= 0 ? "pos" : "neg"}">${fmt(dmAvg)}%</div>
+        <div class="k">G10 average real yield (latest)</div></div>`}
+    </div>
+    <p>Gold pays no interest, so real yields are its opportunity cost: the higher the
+    real return on safe government bonds, the more it costs to hold gold instead
+    &mdash; and vice versa. The US 10-year real yield, gold's most-watched driver, is
+    currently <b>${level}</b> at ${fmt(nowReal)}% and <b>${trend}</b>
+    (${fmt(chg)}pp over the last three months of matched data)${dmAvg === null ? "" :
+    `, while the average real yield across the G10 majors is ${fmt(dmAvg)}%`}.
+    Taken together, the current real-yield backdrop is
+    <b>${supportive ? "supportive" : score === 0 ? "neither clearly supportive nor restrictive" : "a headwind"}</b> for gold.</p>
+    <p><b>Why, factor by factor:</b></p>
+    <ul class="factors">${factors.map(f => {
+      const [t, c] = tag(f.s);
+      return `<li><span class="factor-tag ${c}">${t}</span><span><b>${f.label}</b> &mdash; ${f.reason}</span></li>`;
+    }).join("")}</ul>
+    <p class="disclaimer">Rule-of-thumb signal derived only from real-yield levels and momentum.
+    Gold is also driven by the dollar, central-bank buying, positioning and risk sentiment
+    &mdash; this is not investment advice.</p>`;
+}
+
+function startPeriod(monthsBack) {
+  const d = new Date();
+  const total = d.getFullYear() * 12 + d.getMonth() - monthsBack;
+  return `${Math.floor(total / 12)}-${String(total % 12 + 1).padStart(2, "0")}`;
+}
+
+async function load() {
+  const btn = document.getElementById("refreshBtn");
+  const status = document.getElementById("status");
+  const errBox = document.getElementById("error");
+  btn.disabled = true;
+  status.textContent = "Fetching latest data…";
+  errBox.style.display = "none";
+
+  try {
+    const areas = Object.values(CURRENCIES).map(c => c[0]).join("+");
+    const start = startPeriod(15);
+    const yieldUrl = `${OECD}/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/` +
+      `${areas}.M.IRLT.PA.....?startPeriod=${start}&format=csvfile`;
+    const cpiKey = `${areas}.M+Q.N.CPI.PA._T.N.GY?startPeriod=${start}&format=csvfile`;
+    const [yRows, cpiMain, cpiG20] = await Promise.all([
+      fetchCsv(yieldUrl),
+      fetchCsv(`${OECD}/OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0/${cpiKey}`),
+      fetchCsv(`${OECD}/OECD.SDD.TPS,DSD_G20_PRICES@DF_G20_PRICES,1.0/${cpiKey}`),
+    ]);
+
+    const yields = latestByArea(yRows);
+    const inflation = latestByArea(cpiMain.concat(cpiG20));
+
+    rows = [];
+    const skipped = [];
+    for (const [ccy, [area, name]] of Object.entries(CURRENCIES)) {
+      const y = yields[area], i = inflation[area];
+      if (!y || !i) { skipped.push(ccy); continue; }
+      rows.push({
+        currency: ccy, name,
+        nominal: y.value, yieldPeriod: y.period,
+        cpi: i.value, cpiPeriod: i.period,
+        real: y.value - i.value,
+        fisher: ((1 + y.value / 100) / (1 + i.value / 100) - 1) * 100,
+      });
+    }
+
+    document.getElementById("skipped").textContent =
+      skipped.length ? ` No data currently available for: ${skipped.join(", ")}.` : "";
+
+    // gold signal: US real-yield level + ~3-month momentum from matched months
+    const usY = monthlySeries(yRows, "USA");
+    const usC = monthlySeries(cpiMain.concat(cpiG20), "USA");
+    const matched = Object.keys(usY).filter(p => p in usC).sort();
+    goldData = null;
+    if (matched.length) {
+      const nowP = matched[matched.length - 1];
+      const prevP = matched[Math.max(0, matched.length - 4)];
+      const g10 = ["USD", "EUR", "JPY", "GBP", "CHF", "CAD", "AUD"];
+      const g10Rows = rows.filter(r => g10.includes(r.currency));
+      goldData = {
+        nowP, prevP,
+        nowReal: usY[nowP] - usC[nowP],
+        prevReal: usY[prevP] - usC[prevP],
+        dmAvg: g10Rows.length
+          ? g10Rows.reduce((s, r) => s + r.real, 0) / g10Rows.length : null,
+      };
+    }
+
+    render();
+    renderGold();
+    status.textContent = `Last updated ${new Date().toLocaleString()} · auto-refreshes hourly`;
+  } catch (e) {
+    errBox.textContent = "Could not load data: " + e.message +
+      " — check your internet connection and try Refresh.";
+    errBox.style.display = "block";
+    status.textContent = "Update failed";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function render() {
+  const shown = rows.filter(r => visible.has(r.currency));
+  if (!shown.length) {
+    document.getElementById("tbody").innerHTML =
+      `<tr class="loading"><td colspan="7">No currencies selected — click a currency above to show it.</td></tr>`;
+    return;
+  }
+  const sorted = [...shown].sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    const cmp = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+    return sortDesc ? -cmp : cmp;
+  });
+  const maxAbs = Math.max(0.5, ...shown.map(r => Math.abs(r.real)));
+  const fmt = (v) => v.toFixed(2) + "%";
+  const cls = (v) => v >= 0 ? "pos" : "neg";
+
+  document.getElementById("tbody").innerHTML = sorted.map(r => `
+    <tr>
+      <td class="ccy">${r.currency}</td>
+      <td>${r.name}</td>
+      <td>${fmt(r.nominal)} <span class="period">${r.yieldPeriod}</span></td>
+      <td>${fmt(r.cpi)} <span class="period">${r.cpiPeriod}</span></td>
+      <td class="${cls(r.real)}"><b>${fmt(r.real)}</b></td>
+      <td class="${cls(r.fisher)}">${fmt(r.fisher)}</td>
+      <td class="barcell">
+        <div class="bar-track">
+          <div class="bar-half left">${r.real < 0 ?
+            `<div class="bar-neg-fill" style="width:${Math.abs(r.real) / maxAbs * 100}%"></div>` : ""}</div>
+          <div class="bar-half">${r.real >= 0 ?
+            `<div class="bar-pos-fill" style="width:${r.real / maxAbs * 100}%"></div>` : ""}</div>
+        </div>
+      </td>
+    </tr>`).join("");
+
+  document.querySelectorAll("th[data-k]").forEach(th =>
+    th.classList.toggle("sorted", th.dataset.k === sortKey));
+}
+
+document.querySelectorAll("th[data-k]").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.k;
+    if (sortKey === k) sortDesc = !sortDesc;
+    else { sortKey = k; sortDesc = k !== "currency" && k !== "name"; }
+    render();
+  });
+});
+
+renderChips();
+load();
+setInterval(load, 60 * 60 * 1000);   // re-fetch hourly while the page is open
+</script>
+</body>
+</html>

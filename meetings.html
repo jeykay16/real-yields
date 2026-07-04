@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Central Bank Rate Meetings</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --card: #171e2e;
+    --border: #263048;
+    --text: #e8ecf4;
+    --muted: #8b95ab;
+    --pos: #34d399;
+    --neg: #f87171;
+    --accent: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 26px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .nav { margin: 0 0 18px; display: flex; gap: 14px; font-size: 14px; }
+  .nav a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .nav a:hover { text-decoration: underline; }
+  .nav .here { color: var(--muted); font-weight: 600; }
+  .status { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; overflow-x: auto;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 10px 12px; text-align: left; white-space: nowrap; }
+  th {
+    background: #1b2438; color: var(--muted); font-weight: 600;
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  tr { border-top: 1px solid var(--border); }
+  tbody tr:hover { background: #1c2540; }
+  .ccy { font-weight: 700; }
+  .bank a { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--muted); }
+  .bank a:hover { color: var(--accent); border-color: var(--accent); }
+  .rate { font-weight: 700; }
+  .period { color: var(--muted); font-size: 12px; }
+  .pos { color: var(--pos); }
+  .neg { color: var(--neg); }
+  .muted { color: var(--muted); }
+  .stance { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .stance.easing { background: rgba(52, 211, 153, .12); color: var(--pos); border: 1px solid var(--pos); }
+  .stance.tightening { background: rgba(248, 113, 113, .12); color: var(--neg); border: 1px solid var(--neg); }
+  .stance.hold { background: rgba(139, 149, 171, .12); color: var(--muted); border: 1px solid var(--muted); }
+  .soon { color: var(--accent); font-weight: 700; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 14px; line-height: 1.6; }
+  #error {
+    display: none; background: #3a1d24; border: 1px solid #7f2f3d;
+    color: #fda4af; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .loading td { text-align: center !important; color: var(--muted); padding: 40px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Central Bank Rate Meetings</h1>
+  <div class="sub">Upcoming interest-rate decisions, current policy rates and the latest moves &middot; rates live from the BIS API</div>
+
+  <div class="nav">
+    <a href="index.html">&larr; Real yields</a>
+    <span class="here">Rate meetings</span>
+  </div>
+
+  <div class="status" id="status">Loading policy rates&hellip;</div>
+  <div id="error"></div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Currency</th>
+          <th>Central bank</th>
+          <th>Policy rate</th>
+          <th>Last change (latest takeaway)</th>
+          <th>12-month move</th>
+          <th>Stance</th>
+          <th>Next meeting</th>
+          <th>Then</th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr class="loading"><td colspan="8">Fetching policy rates from the BIS&hellip;</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    Policy rates are the official central-bank rates published daily by the
+    <a href="https://data.bis.org/topics/CBPOL" style="color:var(--accent)">Bank for International Settlements</a>
+    (the US rate is the mid-point of the Fed's target range) and refresh every time this
+    page is opened. "Last change" and "Stance" are computed automatically from that data:
+    a bank is shown as cutting/hiking if its last interest-rate move was within the past
+    eight months, otherwise as on hold (this refers to the policy interest rate only,
+    not quantitative easing or tightening). Meeting dates are the officially published 2026 schedules of each
+    central bank (decision/announcement day; collected July 2026) &mdash; click a bank's name
+    to check its own calendar, which always takes precedence. CNY has no fixed meeting:
+    China's loan prime rate is set monthly around the 20th. Dates highlighted in blue are
+    within the next 14 days. This page is informational only &mdash; not investment advice.
+  </div>
+
+  <div class="note">Built by <a href="https://github.com/jeykay16" style="color:var(--accent)">jeykay16</a>
+    &middot; Data: <a href="https://data-explorer.oecd.org" style="color:var(--accent)">OECD</a>
+    &amp; <a href="https://data.bis.org" style="color:var(--accent)">BIS</a>
+    &middot; <a href="https://github.com/jeykay16/real-yields" style="color:var(--accent)">Source code</a></div>
+</div>
+
+<script>
+// currency -> [BIS area code, bank name, official calendar URL,
+//              2026 decision dates (announcement day) from July onwards]
+const BANKS = {
+  USD: ["US", "US Federal Reserve (FOMC)", "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+        ["2026-07-29", "2026-09-16", "2026-10-28", "2026-12-09"]],
+  EUR: ["XM", "European Central Bank", "https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html",
+        ["2026-07-23", "2026-09-10", "2026-10-29", "2026-12-17"]],
+  JPY: ["JP", "Bank of Japan", "https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm",
+        ["2026-07-31", "2026-09-18", "2026-10-30", "2026-12-18"]],
+  GBP: ["GB", "Bank of England (MPC)", "https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates",
+        ["2026-07-30", "2026-09-17", "2026-11-05", "2026-12-17"]],
+  CHF: ["CH", "Swiss National Bank", "https://www.snb.ch/en/services-events/digital-services/important-dates",
+        ["2026-09-24", "2026-12-10"]],
+  CAD: ["CA", "Bank of Canada", "https://www.bankofcanada.ca/press/upcoming-events/",
+        ["2026-07-15", "2026-09-02", "2026-10-28", "2026-12-09"]],
+  AUD: ["AU", "Reserve Bank of Australia", "https://www.rba.gov.au/schedules-events/",
+        ["2026-08-11", "2026-09-29", "2026-11-03", "2026-12-08"]],
+  NZD: ["NZ", "Reserve Bank of New Zealand", "https://www.rbnz.govt.nz/monetary-policy",
+        ["2026-07-08", "2026-09-02", "2026-10-28", "2026-12-09"]],
+  SEK: ["SE", "Sveriges Riksbank", "https://www.riksbank.se/en-gb/press-and-published/calendar/",
+        ["2026-08-20", "2026-09-24", "2026-11-04", "2026-12-16"]],
+  NOK: ["NO", "Norges Bank", "https://www.norges-bank.no/en/topics/Monetary-policy/",
+        ["2026-08-13", "2026-09-24", "2026-11-05", "2026-12-17"]],
+  KRW: ["KR", "Bank of Korea", "https://www.bok.or.kr/eng/main/main.do",
+        ["2026-07-16", "2026-08-27", "2026-10-22", "2026-11-26"]],
+  CNY: ["CN", "People's Bank of China", "http://www.pbc.gov.cn/en/",
+        "LPR"],
+  INR: ["IN", "Reserve Bank of India (MPC)", "https://www.rbi.org.in",
+        ["2026-08-05", "2026-10-07", "2026-12-04"]],
+  BRL: ["BR", "Banco Central do Brasil (Copom)", "https://www.bcb.gov.br/en/monetarypolicy",
+        ["2026-08-05", "2026-09-16", "2026-11-04", "2026-12-09"]],
+  MXN: ["MX", "Banco de México", "https://www.banxico.org.mx/",
+        ["2026-08-06", "2026-09-24", "2026-11-05", "2026-12-17"]],
+  ZAR: ["ZA", "South African Reserve Bank (MPC)", "https://www.resbank.co.za/",
+        ["2026-07-23", "2026-09-23", "2026-11-19"]],
+  PLN: ["PL", "National Bank of Poland (MPC)", "https://nbp.pl/en/",
+        ["2026-07-08", "2026-09-02", "2026-10-07", "2026-11-04", "2026-12-02"]],
+};
+
+// quote-aware CSV parser (BIS text fields can contain commas)
+function parseCsv(text) {
+  const rows = []; let row = []; let cur = ""; let inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+      else cur += c;
+    }
+    else if (c === '"') inQ = true;
+    else if (c === ",") { row.push(cur); cur = ""; }
+    else if (c === "\n") { row.push(cur.replace(/\r$/, "")); rows.push(row); row = []; cur = ""; }
+    else cur += c;
+  }
+  if (cur !== "" || row.length) { row.push(cur.replace(/\r$/, "")); rows.push(row); }
+  return rows;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function fmtDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${d} ${MONTHS[m - 1]} ${y}`;
+}
+function bp(delta) {
+  const v = Math.round(delta * 100);
+  return (v > 0 ? "+" : "") + v + "bp";
+}
+
+async function load() {
+  const status = document.getElementById("status");
+  const errBox = document.getElementById("error");
+  try {
+    const start = new Date();
+    start.setMonth(start.getMonth() - 14);
+    const startStr = start.toISOString().slice(0, 10);
+    const areas = Object.values(BANKS).map(b => "D." + b[0]).join(",");
+    const url = `https://stats.bis.org/api/v2/data/dataflow/BIS/WS_CBPOL/1.0/${areas}` +
+      `?format=csv&startPeriod=${startStr}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`BIS API returned HTTP ${resp.status}`);
+    const grid = parseCsv(await resp.text());
+    const header = grid[0];
+    const iArea = header.indexOf("REF_AREA");
+    const iDate = header.indexOf("TIME_PERIOD");
+    const iVal = header.indexOf("OBS_VALUE");
+
+    // area -> sorted [date, value] series
+    const series = {};
+    for (const row of grid.slice(1)) {
+      const v = parseFloat(row[iVal]);
+      if (!isFinite(v)) continue;
+      (series[row[iArea]] = series[row[iArea]] || []).push([row[iDate], v]);
+    }
+    for (const a in series) series[a].sort((x, y) => x[0] < y[0] ? -1 : 1);
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const soonIso = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+
+    const html = Object.entries(BANKS).map(([ccy, [area, bank, link, dates]]) => {
+      const s = series[area];
+      let rateCell = `<span class="muted">n/a</span>`, changeCell = `<span class="muted">n/a</span>`,
+          moveCell = `<span class="muted">n/a</span>`, stanceCell = "";
+      if (s && s.length) {
+        const [lastDate, lastVal] = s[s.length - 1];
+        rateCell = `<span class="rate">${lastVal.toFixed(2)}%</span> <span class="period">${fmtDate(lastDate)}</span>`;
+
+        // last change within the fetched window
+        let change = null;
+        for (let i = 1; i < s.length; i++) {
+          if (s[i][1] !== s[i - 1][1]) change = { date: s[i][0], from: s[i - 1][1], to: s[i][1] };
+        }
+        if (change) {
+          const cut = change.to < change.from;
+          changeCell = `<span class="${cut ? "pos" : "neg"}">${cut ? "Cut" : "Hiked"} ` +
+            `${bp(Math.abs(change.to - change.from) * (cut ? -1 : 1))}</span> on ${fmtDate(change.date)} ` +
+            `<span class="period">(${change.from.toFixed(2)}% &rarr; ${change.to.toFixed(2)}%)</span>`;
+        } else {
+          changeCell = `<span class="muted">no change in past 14 months</span>`;
+        }
+
+        // net move vs ~12 months ago
+        const target = new Date(); target.setFullYear(target.getFullYear() - 1);
+        const targetIso = target.toISOString().slice(0, 10);
+        let yearAgo = s[0];
+        for (const obs of s) { if (obs[0] <= targetIso) yearAgo = obs; else break; }
+        const net = lastVal - yearAgo[1];
+        moveCell = net === 0 ? `<span class="muted">unchanged</span>` :
+          `<span class="${net < 0 ? "pos" : "neg"}">${bp(net)}</span>`;
+
+        // stance: last move within 8 months = easing/tightening, else on hold
+        const eightMo = new Date(); eightMo.setMonth(eightMo.getMonth() - 8);
+        const active = change && change.date >= eightMo.toISOString().slice(0, 10);
+        stanceCell = !active ? `<span class="stance hold">ON HOLD</span>` :
+          change.to < change.from ? `<span class="stance easing">CUTTING</span>` :
+          `<span class="stance tightening">HIKING</span>`;
+      }
+
+      let nextCell, thenCell;
+      if (dates === "LPR") {
+        nextCell = `LPR set monthly`;
+        thenCell = `<span class="period">around the 20th</span>`;
+      } else {
+        const future = dates.filter(d => d >= todayIso);
+        nextCell = future.length ?
+          `<span class="${future[0] <= soonIso ? "soon" : ""}">${fmtDate(future[0])}</span>` :
+          `<span class="muted">see 2027 calendar</span>`;
+        thenCell = future.length > 1 ?
+          `<span class="period">${future.slice(1, 3).map(fmtDate).join(" &middot; ")}</span>` :
+          `<span class="period">&mdash;</span>`;
+      }
+
+      return `<tr>
+        <td class="ccy">${ccy}</td>
+        <td class="bank"><a href="${link}" target="_blank" rel="noopener">${bank}</a></td>
+        <td>${rateCell}</td>
+        <td>${changeCell}</td>
+        <td>${moveCell}</td>
+        <td>${stanceCell}</td>
+        <td>${nextCell}</td>
+        <td>${thenCell}</td>
+      </tr>`;
+    }).join("");
+
+    document.getElementById("tbody").innerHTML = html;
+    status.textContent = `Last updated ${new Date().toLocaleString()} · rates refresh on every visit`;
+  } catch (e) {
+    errBox.textContent = "Could not load policy rates: " + e.message +
+      " — check your internet connection and reload the page.";
+    errBox.style.display = "block";
+    status.textContent = "Update failed";
+  }
+}
+
+load();
+</script>
+</body>
+</html>
