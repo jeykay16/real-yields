@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Market News &amp; Economic Calendar</title>
+<link rel="preconnect" href="https://api.gdeltproject.org">
+<link rel="preconnect" href="https://platform.twitter.com">
 <style>
   :root {
     --bg: #0f1420;
@@ -82,6 +84,7 @@
   .news-meta .ago { color: var(--warn); font-weight: 600; }
   .note { color: var(--muted); font-size: 12px; margin-top: 14px; line-height: 1.6; }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <div class="wrap">
@@ -93,9 +96,18 @@
     <a href="meetings.html">Rate meetings</a>
     <a href="gold.html">Gold drivers</a>
     <span class="here">News</span>
+    <a href="learn.html">Learn</a>
   </div>
 
   <div class="status" id="status">Loading&hellip;</div>
+
+  <!-- market focus -->
+  <div class="card">
+    <h2>Market focus right now</h2>
+    <div class="cap">What coverage is dominated by, computed from the last 48 hours of stories:
+      theme volumes, and the headlines picked up by the most outlets</div>
+    <div id="focusBody"><div class="loading-msg">Analysing coverage&hellip;</div></div>
+  </div>
 
   <!-- economic calendar -->
   <div class="card">
@@ -316,13 +328,17 @@ async function loadNews(force, attempt) {
   try {
     const q = encodeURIComponent(TOPICS[myTopic] + " sourcelang:eng");
     const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${q}` +
-      `&mode=artlist&maxrecords=50&format=json&sort=datedesc&timespan=2d`;
+      `&mode=artlist&maxrecords=100&format=json&sort=datedesc&timespan=2d`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error("HTTP " + resp.status);
     const data = await resp.json();
     const articles = dedupe(data.articles || []);
     cacheSet(cacheKey, articles);
     lastNewsSuccess = Date.now();
+    if (myTopic === "all") {
+      cacheSet("gdelt_raw_all", data.articles || []);
+      computeFocus();
+    }
     if (myTopic === topic) renderNews(articles);
   } catch (e) {
     if (myTopic !== topic) return;
@@ -369,6 +385,72 @@ document.querySelectorAll("#topicChips .chip").forEach(ch => {
     loadNews();
   };
 });
+
+/* ---------- market focus (dominant themes + most-syndicated headlines) ---------- */
+
+const FOCUS_THEMES = [
+  ["Fed & rates", /\b(fed\b|fomc|powell|rate cut|rate hike|interest rate|monetary policy)/i],
+  ["Inflation & prices", /\b(inflation|cpi\b|consumer price|pce\b|deflation|price pressure)/i],
+  ["Tariffs & trade", /\b(tariff|trade war|trade deal|trade talks|import dut|export ban)/i],
+  ["Jobs & growth", /\b(jobs report|payroll|unemployment|gdp\b|recession|pmi\b|hiring)/i],
+  ["Geopolitics", /\b(war\b|missile|airstrike|sanction|ceasefire|invasion|conflict|military|troops)/i],
+  ["Banks & credit", /\b(bank collapse|bank failure|banking|bailout|liquidity|credit crunch|default)/i],
+  ["Dollar & bonds", /\b(dollar|treasur|bond market|bond yield|yields)/i],
+  ["Gold & metals", /\b(gold|bullion|silver|precious metal)/i],
+];
+
+function computeFocus() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem("gdelt_raw_all")).data; } catch (e) {}
+  if (!raw || !raw.length) {
+    // fall back to the deduplicated cache (themes only — syndication counts need raw data)
+    try { raw = JSON.parse(localStorage.getItem("gdelt_all")).data; } catch (e) {}
+  }
+  if (!raw || !raw.length) return;
+
+  // syndication: how many outlets ran (roughly) the same headline
+  const groups = {};
+  for (const a of raw) {
+    const key = (a.title || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 60);
+    if (!key) continue;
+    if (!groups[key]) groups[key] = { article: a, outlets: new Set() };
+    groups[key].outlets.add(a.domain);
+  }
+  const major = Object.values(groups)
+    .map(g => ({ ...g.article, n: g.outlets.size }))
+    .filter(g => g.n >= 2)
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 6);
+
+  // theme volume over unique stories
+  const uniqueTitles = Object.values(groups).map(g => g.article.title || "");
+  const themeCounts = FOCUS_THEMES
+    .map(([name, re]) => [name, uniqueTitles.filter(t => re.test(t)).length])
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const maxN = themeCounts.length ? themeCounts[0][1] : 1;
+
+  const themesHtml = themeCounts.map(([name, n]) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:4px 0;font-size:13px">
+      <span style="flex:0 0 150px">${name}</span>
+      <div style="flex:1;background:#1b2438;border-radius:4px;height:12px;overflow:hidden">
+        <div style="width:${Math.round(n / maxN * 100)}%;height:100%;background:var(--accent);opacity:.8"></div>
+      </div>
+      <span class="muted" style="flex:0 0 70px;text-align:right;font-size:12px">${n} stories</span>
+    </div>`).join("");
+
+  const majorHtml = major.length ? `
+    <div style="margin-top:14px;font-size:13px;font-weight:700;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.04em">Most widely covered</div>` +
+    major.map(a => `
+      <div class="news-item">
+        <a href="${a.url}" target="_blank" rel="noopener">${a.title}</a>
+        <div class="news-meta"><span class="ago">${a.n} outlets</span> · first seen via ${a.domain}</div>
+      </div>`).join("") : "";
+
+  document.getElementById("focusBody").innerHTML = themesHtml + majorHtml ||
+    `<div class="loading-msg">Not enough coverage data yet.</div>`;
+}
 
 /* ---------- X market accounts ---------- */
 
@@ -431,6 +513,7 @@ renderXEmbed();
 let lastNewsSuccess = null;
 let lastCycle = Date.now();
 
+computeFocus(); // instant paint from the cached analysis, refreshed on each fetch
 (async () => {
   await Promise.all([loadCalendar(), loadNews()]);
 })();

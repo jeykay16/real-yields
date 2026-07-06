@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Learn — Indicators &amp; What Moves Gold</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --card: #171e2e;
+    --border: #263048;
+    --text: #e8ecf4;
+    --muted: #8b95ab;
+    --pos: #34d399;
+    --neg: #f87171;
+    --accent: #60a5fa;
+    --gold: #f0c34e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 26px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .nav { margin: 0 0 18px; display: flex; gap: 14px; font-size: 14px; flex-wrap: wrap; }
+  .nav a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .nav a:hover { text-decoration: underline; }
+  .nav .here { color: var(--muted); font-weight: 600; }
+  input[type="search"] {
+    width: 100%; background: #1b2438; border: 1px solid var(--border);
+    color: var(--text); border-radius: 10px; padding: 11px 14px; font-size: 14px;
+    font-family: inherit; margin-bottom: 18px; outline: none;
+  }
+  input[type="search"]:focus { border-color: var(--accent); }
+  h2.cat {
+    font-size: 15px; font-weight: 700; color: var(--accent);
+    margin: 26px 0 10px; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .entry {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 15px 18px; margin-bottom: 10px;
+  }
+  .entry h3 { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
+  .entry .meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .entry p { margin: 6px 0 0; font-size: 13px; line-height: 1.65; }
+  .entry .gold-note { color: var(--gold); font-weight: 600; }
+  .hidden { display: none; }
+  .none-msg { color: var(--muted); font-size: 14px; padding: 20px 0; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 20px; line-height: 1.6; }
+</style>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div class="wrap">
+  <h1>Learn: Indicators &amp; What Moves Gold</h1>
+  <div class="sub">Plain-English explanations of the data releases and concepts on this site, and the usual way each one moves the gold price</div>
+
+  <div class="nav">
+    <a href="index.html">&larr; Real yields</a>
+    <a href="meetings.html">Rate meetings</a>
+    <a href="gold.html">Gold drivers</a>
+    <a href="news.html">News</a>
+    <span class="here">Learn</span>
+  </div>
+
+  <input type="search" id="q" placeholder="Search — e.g. ISM, CPI, real yield, payrolls…">
+  <div id="list"></div>
+  <div class="none-msg hidden" id="noneMsg">Nothing matches that search.</div>
+
+  <div class="note">
+    The "usual effect on gold" lines are historical tendencies, not laws — gold reacts to the
+    <i>surprise</i> versus expectations, not the number itself, and context (what the Fed is
+    doing, where the dollar is) can flip any single reaction. Nothing here is investment advice.
+  </div>
+
+  <div class="note">Built by <a href="https://github.com/jeykay16" style="color:var(--accent)">jeykay16</a>
+    &middot; Data: <a href="https://data-explorer.oecd.org" style="color:var(--accent)">OECD</a>
+    &amp; <a href="https://data.bis.org" style="color:var(--accent)">BIS</a>
+    &middot; <a href="https://github.com/jeykay16/real-yields" style="color:var(--accent)">Source code</a></div>
+</div>
+
+<script>
+const ENTRIES = [
+  ["Inflation & prices", [
+    ["CPI — Consumer Price Index", "Monthly · the headline inflation number",
+     "Measures how much a basket of everyday goods and services costs compared with a year ago. The single most-watched inflation gauge; released monthly about two weeks after the month ends.",
+     "Hotter-than-expected CPI usually pushes bond yields up and brings rate hikes closer — bad for gold at first. But if inflation runs hot while the central bank does nothing, real yields fall and gold rallies. The reaction depends on what the Fed is expected to do about it."],
+    ["Core CPI", "Monthly · inflation without food and energy",
+     "The same as CPI but excluding food and energy prices, which swing wildly for reasons unrelated to the economy. Central banks watch core more closely because it shows underlying inflation pressure.",
+     "Markets react more to core surprises than headline ones — a hot core print is a stronger signal that rate cuts are off the table."],
+    ["PCE — Personal Consumption Expenditures", "Monthly · the Fed's preferred inflation measure",
+     "An inflation measure built from what people actually buy rather than a fixed basket. The Federal Reserve's official 2% target is defined on core PCE, not CPI.",
+     "Same logic as CPI, but it lands later in the month so it usually confirms rather than surprises. When PCE and CPI disagree, the Fed follows PCE."],
+    ["PPI — Producer Price Index", "Monthly · inflation in the pipeline",
+     "Measures prices businesses charge each other, before costs reach consumers. Rising PPI often shows up in CPI a few months later.",
+     "A leading hint: hot PPI suggests hotter CPI ahead — mildly gold-relevant through the rates channel."],
+    ["Breakeven inflation", "Market-based · expected future inflation",
+     "The inflation rate implied by comparing normal government bonds with inflation-protected ones (TIPS). It's the market's live bet on average inflation over the next 5 or 10 years.",
+     "Rising breakevens with unchanged bond yields mean falling real yields — one of the most reliably bullish setups for gold."]
+  ]],
+  ["Jobs & labour market", [
+    ["NFP — Nonfarm Payrolls (the jobs report)", "Monthly, first Friday · the biggest data event of the month",
+     "How many jobs the US economy added or lost last month, plus the unemployment rate and wage growth in the same release. Regularly moves every market within seconds.",
+     "A weak jobs report brings rate cuts closer — yields and the dollar fall, gold typically jumps. A blowout report does the opposite. The wage-growth figure inside the report matters too, as fast wage growth feeds inflation."],
+    ["Unemployment rate", "Monthly · inside the jobs report",
+     "The share of people who want work but can't find it. Rises when the economy weakens — often one of the first clear recession signals.",
+     "Rising unemployment → easier policy ahead → usually gold-positive, especially if it climbs quickly."],
+    ["Jobless claims", "Weekly, Thursdays · the fastest labour signal",
+     "How many people filed for unemployment benefits last week. Noisy, but it's the most frequent read on whether layoffs are picking up.",
+     "A sustained climb in claims is an early recession warning — the kind of drip-feed that gradually turns markets dovish and supports gold."],
+    ["Average hourly earnings", "Monthly · wage inflation",
+     "How fast pay is rising. Central banks fear a wage-price spiral, where rising wages and prices chase each other upward.",
+     "Hot wages = sticky inflation = higher-for-longer rates — a headwind for gold via higher real yields."]
+  ]],
+  ["Growth & activity", [
+    ["GDP — Gross Domestic Product", "Quarterly · the broadest growth measure",
+     "The total value of everything an economy produced in a quarter. Two consecutive negative quarters is the informal definition of recession.",
+     "Weak GDP pushes central banks toward cutting — generally gold-positive. But GDP is old news by release day; markets often shrug unless it's a big surprise."],
+    ["ISM Manufacturing PMI", "Monthly, 1st business day · the classic business-cycle gauge",
+     "A survey of purchasing managers at manufacturers: are orders, production and hiring rising or falling? Above 50 = expanding, below 50 = contracting. Purchasing managers see turns in the economy before the hard data does.",
+     "A sub-50 slide signals slowdown → rate cuts closer → typically gold-positive. The 'prices paid' component inside it is also watched as an early inflation signal. ISM Services (a few days later) covers the much larger services side of the economy the same way."],
+    ["S&P Global PMIs (flash)", "Monthly, ~23rd · the early preview",
+     "Same idea as ISM but from a different provider, with a 'flash' estimate released a week before the month even ends — the earliest look at the current month.",
+     "Same direction as ISM. Flash releases can move markets precisely because nothing fresher exists."],
+    ["Retail sales", "Monthly · the consumer check-up",
+     "Total spending in shops and online. The US consumer is about two-thirds of the economy, so this is the demand pulse.",
+     "Weak retail sales = cooling economy = dovish = mildly gold-positive, and vice versa."],
+    ["Consumer confidence", "Monthly · how people feel",
+     "Survey of households: how do you feel about the economy and your finances? Confident consumers spend; worried ones don't.",
+     "A collapse in confidence often precedes weak spending — a soft leading indicator that leans gold-positive when it drops."]
+  ]],
+  ["Central banks & rates", [
+    ["FOMC decision & dot plot", "8× per year · the main event",
+     "The Federal Reserve's rate-setting meeting. Quarterly meetings include the 'dot plot' — each official's forecast of where rates go next — plus a press conference where the Chair's wording is dissected live.",
+     "The single biggest scheduled driver of gold. Cuts (or hints of cuts) lower real yields and weaken the dollar — bullish. Hawkish surprises are bearish. Gold often moves more on the press conference than the decision itself."],
+    ["Policy rate", "Set at meetings · the price of money",
+     "The interest rate a central bank sets, which anchors all other rates in that currency. Shown live for 17 central banks on the Rate meetings page.",
+     "It's not the level but the direction and expectations that matter: an easing cycle is historically gold's best environment."],
+    ["QE & QT", "Ongoing · the balance-sheet tools",
+     "Quantitative easing: the central bank creates money to buy bonds, pushing yields down. Quantitative tightening: the reverse, letting bonds roll off. These operate alongside the policy rate, not instead of it.",
+     "QE eras crush real yields and stoke debasement worries — strongly gold-positive historically (2009–2011, 2020). QT drains liquidity and leans bearish."],
+    ["Real yields", "Derived · this site's core concept",
+     "A bond's yield minus inflation: the true purchasing-power return on 'safe' money. Calculated live for 17 currencies on the front page.",
+     "Gold's opportunity cost. Gold pays nothing, so when real yields are negative or falling, holding gold costs little and it tends to rally; when real yields are high and rising, bonds outcompete gold. The most durable single relationship in the gold market."],
+    ["Yield curve", "Market-based · recession radar",
+     "The gap between long-term and short-term bond yields. Normally long yields are higher; when short yields exceed long ones (inversion), markets are betting on cuts ahead — historically a recession warning.",
+     "An inverted curve that starts steepening as cuts arrive has historically been a strong gold environment."]
+  ]],
+  ["Gold-specific", [
+    ["DXY — US Dollar Index", "Live · gold's second driver",
+     "The dollar measured against a basket of major currencies (euro-heavy). A proxy version is computed live on the Gold drivers page.",
+     "Gold is priced in dollars: a stronger dollar makes gold pricier for the rest of the world and usually pressures it; a falling dollar is a tailwind. Gold's biggest rallies typically combine falling real yields with a falling dollar."],
+    ["COT report — Commitments of Traders", "Weekly, Fridays · who's positioned how",
+     "The CFTC's breakdown of futures positions, including 'managed money' (hedge funds). Shown with a 3-year percentile on the Gold drivers page.",
+     "Works as a contrarian gauge at extremes: when funds are near record long, the rally is crowded and fragile; when they've been washed out, sellers are exhausted. In between it mostly just confirms the trend."],
+    ["Gold ETF flows", "Ongoing · investor demand you can count",
+     "Exchange-traded funds like GLD hold physical bars; when investors buy the ETF, the fund buys gold. Flows are published and act as a visible demand meter.",
+     "Sustained inflows supported every major bull run; heavy outflows (2013) marked the worst bear phase. Slow-moving but confirms whether investors are actually committing money."],
+    ["Central-bank gold buying", "Quarterly data · the structural bid",
+     "Central banks (China, India, Türkiye, and others) have been adding gold to reserves at a historic pace since 2022, partly to reduce dependence on the dollar.",
+     "A steady price floor that doesn't care about real yields — one reason gold held up in 2023–24 despite high real yields. Headlines about reserve purchases are direct gold news."],
+    ["Safe-haven flows", "Event-driven · the crisis bid",
+     "In wars, banking scares and market crashes, money runs to assets with no counterparty risk: gold, and often the dollar and Treasury bonds too.",
+     "Gold spikes on shock events — but crisis pops fade if the trigger de-escalates. Durable rallies need the real-yield backdrop to agree with the fear."],
+    ["XAU/USD", "The quote itself",
+     "The price of one troy ounce of gold in US dollars — the standard way gold is quoted in FX markets (XAU is gold's currency code).",
+     "Everything on this site — real yields, the dollar, positioning, news and scheduled data — is ultimately about which way this number gets pushed."]
+  ]]
+];
+
+const list = document.getElementById("list");
+list.innerHTML = ENTRIES.map(([cat, items]) => `
+  <h2 class="cat">${cat}</h2>` +
+  items.map(([name, meta, what, gold]) => `
+    <div class="entry">
+      <h3>${name}</h3>
+      <div class="meta">${meta}</div>
+      <p>${what}</p>
+      <p><span class="gold-note">Usual effect on gold:</span> ${gold}</p>
+    </div>`).join("")
+).join("");
+
+document.getElementById("q").addEventListener("input", ev => {
+  const q = ev.target.value.trim().toLowerCase();
+  let any = false;
+  document.querySelectorAll(".entry").forEach(e => {
+    const hit = !q || e.textContent.toLowerCase().includes(q);
+    e.classList.toggle("hidden", !hit);
+    if (hit) any = true;
+  });
+  document.querySelectorAll("h2.cat").forEach(h => {
+    let el = h.nextElementSibling, visible = false;
+    while (el && !el.classList.contains("cat".split(" ")[0]) && el.tagName !== "H2") {
+      if (el.classList.contains("entry") && !el.classList.contains("hidden")) visible = true;
+      el = el.nextElementSibling;
+    }
+    h.classList.toggle("hidden", !visible);
+  });
+  document.getElementById("noneMsg").classList.toggle("hidden", any);
+});
+</script>
+</body>
+</html>

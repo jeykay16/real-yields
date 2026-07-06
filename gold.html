@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gold Drivers — XAU/USD</title>
+<link rel="preconnect" href="https://sdmx.oecd.org">
+<link rel="preconnect" href="https://api.binance.com">
+<link rel="preconnect" href="https://api.imf.org">
+<link rel="preconnect" href="https://api.frankfurter.dev">
+<link rel="preconnect" href="https://publicreporting.cftc.gov">
 <style>
   :root {
     --bg: #0f1420;
@@ -99,6 +104,7 @@
   .err { color: var(--neg); font-size: 13px; margin-top: 10px; }
   .loading-msg { color: var(--muted); font-size: 13px; padding: 20px 0; }
 </style>
+<link rel="stylesheet" href="theme.css">
 </head>
 <body>
 <div class="wrap">
@@ -110,6 +116,7 @@
     <a href="meetings.html">Rate meetings</a>
     <span class="here">Gold drivers</span>
     <a href="news.html">News</a>
+    <a href="learn.html">Learn</a>
   </div>
 
   <div class="status" id="status">Loading live data&hellip;</div>
@@ -140,7 +147,7 @@
     <div class="legend">
       <span class="l-gold">Gold price, USD/oz (right axis)</span>
       <span class="l-ry">US 10Y real yield, % (left axis)</span>
-      <span style="margin-left:auto">hover / tap the chart to inspect any day</span>
+      <span style="margin-left:auto">hover to inspect &middot; scroll to zoom &middot; drag to pan &middot; double-click to reset</span>
     </div>
     <p class="explain"><b>Why it moves gold:</b> gold pays no interest, so the real
     (after-inflation) return on safe bonds is the price of holding it. When real yields
@@ -280,6 +287,21 @@ async function fetchImfGoldMonthly() {
 }
 
 async function loadRealYieldPanel() {
+  // instant paint from a recent cache; full history is refetched once it expires
+  try {
+    const c = JSON.parse(localStorage.getItem("goldDataV1"));
+    if (c && Date.now() - c.t < 15 * 60 * 1000 && c.gold && c.gold.length && c.ry.length) {
+      DATA.ry = c.ry; DATA.gold = c.gold;
+      let spot = null;
+      try {
+        const s = await fetch("https://api.gold-api.com/price/XAU").then(r => r.ok ? r.json() : null);
+        spot = s && s.price;
+      } catch (e) {}
+      finishRyPanel(spot);
+      return;
+    }
+  } catch (e) {}
+
   const [yRows, cRows, binance, imfGold, spotResp] = await Promise.all([
     fetchOecd(`${OECD}/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/USA.M.IRLT.PA.....?startPeriod=1989-01&format=csvfile`),
     fetchOecd(`${OECD}/OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0/USA.M.N.CPI.PA._T.N.GY?startPeriod=1989-01&format=csvfile`),
@@ -316,9 +338,14 @@ async function loadRealYieldPanel() {
 
   DATA.ry = ry;
   DATA.gold = gold;
+  try { localStorage.setItem("goldDataV1", JSON.stringify({ t: Date.now(), ry, gold })); } catch (e) {}
+  finishRyPanel(spotResp && spotResp.price ? spotResp.price : null);
+}
 
-  const lastGold = binance[binance.length - 1].v;
-  const spot = spotResp && spotResp.price ? spotResp.price : lastGold;
+function finishRyPanel(spotPrice) {
+  const ry = DATA.ry, gold = DATA.gold;
+  const lastGold = gold[gold.length - 1].v;
+  const spot = spotPrice || lastGold;
   const goldMonthAgo = valueAt(gold, Date.now() - 30 * 86400000).v;
   const goldYearAgo = valueAt(gold, Date.now() - 365 * 86400000).v;
 
@@ -353,7 +380,7 @@ const PRESET_MONTHS = { "1M": 1, "3M": 3, "6M": 6, "1Y": 12, "2Y": 24, "5Y": 60,
 let range = { preset: "1Y" };
 try {
   const saved = JSON.parse(localStorage.getItem("goldRange"));
-  if (saved && (saved.preset in PRESET_MONTHS || (saved.from && saved.to))) range = saved;
+  if (saved && (saved.preset in PRESET_MONTHS || (saved.from && saved.to) || (saved.fromMs && saved.toMs))) range = saved;
 } catch (e) { /* ignore */ }
 
 function rangeBounds() {
@@ -364,7 +391,23 @@ function rangeBounds() {
     const d = new Date(); d.setMonth(d.getMonth() - m);
     return [d.getTime(), now];
   }
+  if (range.fromMs) return [range.fromMs, range.toMs]; // set by zoom/pan
   return [new Date(range.from + "T00:00").getTime(), new Date(range.to + "T23:59").getTime()];
+}
+
+// zoom/pan write a millisecond-precision window; persistence is debounced
+let saveTimer = null;
+function setView(t0, t1, save) {
+  const dataStart = DATA.gold.length ? DATA.gold[0].t : 0;
+  const span = t1 - t0;
+  if (t1 > Date.now()) { t1 = Date.now(); t0 = t1 - span; }
+  if (t0 < dataStart) { t0 = dataStart; t1 = Math.min(Date.now(), t0 + span); }
+  range = { fromMs: Math.round(t0), toMs: Math.round(t1) };
+  if (save !== false) {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => localStorage.setItem("goldRange", JSON.stringify(range)), 400);
+  }
+  applyRange();
 }
 
 function applyRange() {
@@ -494,41 +537,120 @@ function drawChart(ry, gold, x0, x1) {
       <circle id="crossDot" r="4.5" fill="#f0c34e" stroke="#0f1420" stroke-width="1.5" visibility="hidden"/>
     </svg><div class="tip" id="tip"></div>`;
 
-  // hover crosshair + tooltip
-  const svg = box.querySelector("svg");
-  const tip = document.getElementById("tip");
-  const cross = svg.querySelector("#cross");
-  const dot = svg.querySelector("#crossDot");
+  // expose current view to the persistent chart controls (zoom/pan/hover)
+  chartView = { x0, x1, gold, ry, X, Y2, W, H, ml, mr };
+  attachChartControls();
+}
+
+/* TradingView-style controls: scroll = zoom, drag = pan, hover = crosshair,
+   double-click = reset. Attached once to the container so they survive redraws. */
+let chartView = null;
+
+function attachChartControls() {
+  const box = document.getElementById("chart");
+  if (box._controls) return;
+  box._controls = true;
+
+  let drag = null;
+  let hoverEv = null, hoverRaf = 0;
+
   const hide = () => {
-    tip.style.display = "none";
-    cross.setAttribute("visibility", "hidden");
-    dot.setAttribute("visibility", "hidden");
+    const tip = document.getElementById("tip");
+    const svg = box.querySelector("svg");
+    if (tip) tip.style.display = "none";
+    if (svg) {
+      const c = svg.querySelector("#cross"), d = svg.querySelector("#crossDot");
+      if (c) c.setAttribute("visibility", "hidden");
+      if (d) d.setAttribute("visibility", "hidden");
+    }
   };
-  svg.addEventListener("pointermove", ev => {
+
+  const viewboxX = (ev, svg) => {
     const r = svg.getBoundingClientRect();
-    const vx = (ev.clientX - r.left) * W / r.width;
-    if (vx < ml || vx > W - mr) { hide(); return; }
-    const t = x0 + (vx - ml) / (W - ml - mr) * (x1 - x0);
-    const allRy = DATA.ry;
-    let gi = 0, ri = 0;
-    for (let i = 1; i < gold.length; i++) if (Math.abs(gold[i].t - t) < Math.abs(gold[gi].t - t)) gi = i;
-    for (let i = 1; i < allRy.length; i++) if (Math.abs(allRy[i].t - t) < Math.abs(allRy[ri].t - t)) ri = i;
-    const g = gold[gi];
-    const px = X(g.t);
-    cross.setAttribute("x1", px); cross.setAttribute("x2", px);
-    cross.setAttribute("visibility", "visible");
-    dot.setAttribute("cx", px); dot.setAttribute("cy", Y2(g.v));
-    dot.setAttribute("visibility", "visible");
-    const ds = new Date(g.t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-    tip.innerHTML = `<b>${ds}</b><br>` +
-      `<span class="goldc">Gold: $${g.v.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span>` +
-      (allRy.length ? `<br><span style="color:var(--accent)">US real yield: ${fmtSign(allRy[ri].v)}% (${allRy[ri].p})</span>` : "");
-    tip.style.display = "block";
-    const bx = ev.clientX - r.left, by = ev.clientY - r.top;
-    tip.style.left = Math.min(bx + 16, r.width - 185) + "px";
-    tip.style.top = Math.max(0, by - 70) + "px";
+    return { vx: (ev.clientX - r.left) * chartView.W / r.width, r };
+  };
+
+  box.addEventListener("wheel", ev => {
+    if (!chartView) return;
+    ev.preventDefault();
+    const svg = box.querySelector("svg");
+    if (!svg) return;
+    const { vx } = viewboxX(ev, svg);
+    const { x0, x1, W, ml, mr } = chartView;
+    const frac = Math.min(1, Math.max(0, (vx - ml) / (W - ml - mr)));
+    const tCur = x0 + frac * (x1 - x0);
+    const factor = ev.deltaY > 0 ? 1.25 : 0.8;
+    const dataStart = DATA.gold.length ? DATA.gold[0].t : x0;
+    let span = Math.max(7 * 86400000, Math.min((x1 - x0) * factor, Date.now() - dataStart));
+    setView(tCur - frac * span, tCur - frac * span + span);
+  }, { passive: false });
+
+  box.addEventListener("pointerdown", ev => {
+    if (!chartView) return;
+    drag = { startX: ev.clientX, x0: chartView.x0, x1: chartView.x1, moved: false };
+    box.setPointerCapture(ev.pointerId);
+    hide();
   });
-  svg.addEventListener("pointerleave", hide);
+
+  box.addEventListener("pointermove", ev => {
+    if (!chartView) return;
+    if (drag) {
+      const svg = box.querySelector("svg");
+      if (!svg) return;
+      const r = svg.getBoundingClientRect();
+      const dxView = (drag.startX - ev.clientX) * chartView.W / r.width;
+      const dt = dxView * (drag.x1 - drag.x0) / (chartView.W - chartView.ml - chartView.mr);
+      if (Math.abs(drag.startX - ev.clientX) > 3) drag.moved = true;
+      if (drag.moved) setView(drag.x0 + dt, drag.x1 + dt, false);
+      return;
+    }
+    hoverEv = ev;
+    if (!hoverRaf) hoverRaf = requestAnimationFrame(() => {
+      hoverRaf = 0;
+      const ev2 = hoverEv;
+      const svg = box.querySelector("svg");
+      const tip = document.getElementById("tip");
+      if (!svg || !tip || !chartView) return;
+      const { x0, x1, gold, X, Y2, W, ml, mr } = chartView;
+      const { vx, r } = viewboxX(ev2, svg);
+      if (vx < ml || vx > W - mr || !gold.length) { hide(); return; }
+      const t = x0 + (vx - ml) / (W - ml - mr) * (x1 - x0);
+      const allRy = DATA.ry;
+      let gi = 0, ri = 0;
+      for (let i = 1; i < gold.length; i++) if (Math.abs(gold[i].t - t) < Math.abs(gold[gi].t - t)) gi = i;
+      for (let i = 1; i < allRy.length; i++) if (Math.abs(allRy[i].t - t) < Math.abs(allRy[ri].t - t)) ri = i;
+      const g = gold[gi];
+      const px = X(g.t);
+      const cross = svg.querySelector("#cross"), dot = svg.querySelector("#crossDot");
+      if (cross) {
+        cross.setAttribute("x1", px); cross.setAttribute("x2", px);
+        cross.setAttribute("visibility", "visible");
+      }
+      if (dot) {
+        dot.setAttribute("cx", px); dot.setAttribute("cy", Y2(g.v));
+        dot.setAttribute("visibility", "visible");
+      }
+      const ds = new Date(g.t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+      tip.innerHTML = `<b>${ds}</b><br>` +
+        `<span class="goldc">Gold: $${g.v.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span>` +
+        (allRy.length ? `<br><span style="color:var(--accent)">US real yield: ${fmtSign(allRy[ri].v)}% (${allRy[ri].p})</span>` : "");
+      tip.style.display = "block";
+      const bx = ev2.clientX - r.left, by = ev2.clientY - r.top;
+      tip.style.left = Math.min(bx + 16, r.width - 185) + "px";
+      tip.style.top = Math.max(0, by - 70) + "px";
+    });
+  });
+
+  box.addEventListener("pointerup", () => {
+    if (drag && drag.moved) localStorage.setItem("goldRange", JSON.stringify(range));
+    drag = null;
+  });
+  box.addEventListener("pointerleave", () => { drag = null; hide(); });
+  box.addEventListener("dblclick", () => {
+    range = { preset: "1Y" };
+    localStorage.setItem("goldRange", JSON.stringify(range));
+    applyRange();
+  });
 }
 
 /* ---------- panel 2: dollar index proxy ---------- */
