@@ -132,7 +132,7 @@
     red = high impact, amber = medium), regenerated automatically every six hours by a scheduled
     workflow. Headlines: GDELT project index of worldwide online news
     &mdash; new stories typically appear within about 15 minutes of publication and the list
-    refreshes automatically every 5 minutes while the page is open. Headlines link directly to
+    checks for them every minute while the page is open. Headlines link directly to
     the original source; coverage and accuracy are the source's responsibility. Nothing here is
     investment advice.
   </div>
@@ -283,7 +283,7 @@ function dedupe(articles) {
 async function loadNews(force, attempt) {
   const myTopic = topic;
   const cacheKey = "gdelt_" + myTopic;
-  const cached = cacheGet(cacheKey, 5 * 60 * 1000);
+  const cached = cacheGet(cacheKey, 55 * 1000);
   if (cached && !cached.stale && !force) { renderNews(cached); return; }
 
   // GDELT asks for at most one request every 5 seconds
@@ -312,7 +312,7 @@ async function loadNews(force, attempt) {
       setTimeout(() => { if (myTopic === topic) loadNews(true, (attempt || 0) + 1); }, 8000);
     } else {
       document.getElementById("newsBody").innerHTML =
-        `<div class="err">Could not load headlines (${e.message}) — it will retry on the next 5-minute cycle.</div>`;
+        `<div class="err">Could not load headlines (${e.message}) — it will retry on the next refresh in a minute.</div>`;
     }
   }
 }
@@ -349,9 +349,9 @@ document.querySelectorAll("#topicChips .chip").forEach(ch => {
 (async () => {
   await Promise.all([loadCalendar(), loadNews()]);
   document.getElementById("status").textContent =
-    `Last updated ${new Date().toLocaleString()} · headlines refresh every 5 min, calendar every 30 min`;
+    `Last updated ${new Date().toLocaleString()} · headlines refresh every minute · calendar every 6 hours`;
 })();
-setInterval(() => { if (!document.hidden) loadNews(true); }, 5 * 60 * 1000);
+setInterval(() => { if (!document.hidden) loadNews(true); }, 60 * 1000);
 setInterval(() => { if (!document.hidden) loadCalendar(); }, 30 * 60 * 1000);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) { loadNews(); loadCalendar(); }
