@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gold Drivers — XAU/USD</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --card: #171e2e;
+    --border: #263048;
+    --text: #e8ecf4;
+    --muted: #8b95ab;
+    --pos: #34d399;
+    --neg: #f87171;
+    --accent: #60a5fa;
+    --gold: #f0c34e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 26px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .nav { margin: 0 0 18px; display: flex; gap: 14px; font-size: 14px; }
+  .nav a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .nav a:hover { text-decoration: underline; }
+  .nav .here { color: var(--muted); font-weight: 600; }
+  .status { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 16px;
+  }
+  .card h2 {
+    margin: 0; font-size: 17px; font-weight: 650;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .badge { padding: 4px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+  .badge.bull { background: rgba(52, 211, 153, .12); color: var(--pos); border: 1px solid var(--pos); }
+  .badge.bear { background: rgba(248, 113, 113, .12); color: var(--neg); border: 1px solid var(--neg); }
+  .badge.neut { background: rgba(139, 149, 171, .12); color: var(--muted); border: 1px solid var(--muted); }
+  .stats { display: flex; gap: 28px; flex-wrap: wrap; margin: 14px 0 4px; }
+  .stat .v { font-size: 20px; font-weight: 700; }
+  .stat .k { color: var(--muted); font-size: 12px; }
+  .pos { color: var(--pos); }
+  .neg { color: var(--neg); }
+  .muted { color: var(--muted); }
+  .goldc { color: var(--gold); }
+  p.explain { margin: 12px 0 0; font-size: 13px; line-height: 1.65; color: var(--text); }
+  .factors { list-style: none; margin: 12px 0 0; padding: 0; }
+  .factors li {
+    display: flex; gap: 10px; align-items: baseline; padding: 7px 0;
+    border-top: 1px solid var(--border); font-size: 13px; line-height: 1.5;
+  }
+  .factor-tag { flex: 0 0 92px; font-weight: 700; font-size: 12px; }
+  .factor-tag.pos { color: var(--pos); }
+  .factor-tag.neg { color: var(--neg); }
+  .factor-tag.neut { color: var(--muted); }
+  .chart-box { margin-top: 14px; overflow-x: auto; }
+  svg text { font-family: "Segoe UI", system-ui, sans-serif; }
+  .legend { display: flex; gap: 20px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .legend span::before {
+    content: ""; display: inline-block; width: 18px; height: 3px;
+    border-radius: 2px; margin-right: 6px; vertical-align: middle;
+  }
+  .legend .l-gold::before { background: var(--gold); }
+  .legend .l-ry::before { background: var(--accent); }
+  .note { color: var(--muted); font-size: 12px; margin-top: 14px; line-height: 1.6; }
+  .err { color: var(--neg); font-size: 13px; margin-top: 10px; }
+  .loading-msg { color: var(--muted); font-size: 13px; padding: 20px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Gold Drivers &mdash; XAU/USD</h1>
+  <div class="sub">The three forces that move gold, measured live: real yields, the US dollar, and speculative positioning</div>
+
+  <div class="nav">
+    <a href="index.html">&larr; Real yields</a>
+    <a href="meetings.html">Rate meetings</a>
+    <span class="here">Gold drivers</span>
+  </div>
+
+  <div class="status" id="status">Loading live data&hellip;</div>
+
+  <!-- Overall scorecard -->
+  <div class="card" id="scorecard">
+    <h2>Overall backdrop <span class="badge neut" id="scoreBadge">&hellip;</span></h2>
+    <div class="loading-msg" id="scoreBody">Waiting for the panels below to load&hellip;</div>
+  </div>
+
+  <!-- Panel 1: real yields vs gold -->
+  <div class="card" id="ryCard">
+    <h2>1 &middot; Real yields vs the gold price <span class="badge neut" id="ryBadge">&hellip;</span></h2>
+    <div class="stats" id="ryStats"></div>
+    <div class="chart-box" id="chart"><div class="loading-msg">Building chart&hellip;</div></div>
+    <div class="legend">
+      <span class="l-gold">Gold price, USD/oz (right axis)</span>
+      <span class="l-ry">US 10Y real yield, % (left axis)</span>
+    </div>
+    <p class="explain"><b>Why it moves gold:</b> gold pays no interest, so the real
+    (after-inflation) return on safe bonds is the price of holding it. When real yields
+    fall, holding gold costs less and its price tends to rise &mdash; the two lines
+    usually move in <i>opposite</i> directions. This is widely considered gold's most
+    important driver.</p>
+  </div>
+
+  <!-- Panel 2: dollar -->
+  <div class="card" id="usdCard">
+    <h2>2 &middot; US dollar strength <span class="badge neut" id="usdBadge">&hellip;</span></h2>
+    <div class="stats" id="usdStats"><div class="loading-msg">Loading exchange rates&hellip;</div></div>
+    <p class="explain"><b>Why it moves gold:</b> gold is priced in dollars, so when the
+    dollar strengthens, gold becomes more expensive for buyers in every other currency
+    and demand softens &mdash; a rising dollar is usually a headwind for gold, a falling
+    dollar a tailwind. The index shown here tracks the dollar against the euro, yen,
+    pound, Canadian dollar, krona and franc using the same weights as the well-known
+    DXY index (computed from ECB reference rates).</p>
+  </div>
+
+  <!-- Panel 3: positioning -->
+  <div class="card" id="cotCard">
+    <h2>3 &middot; Speculative positioning <span class="badge neut" id="cotBadge">&hellip;</span></h2>
+    <div class="stats" id="cotStats"><div class="loading-msg">Loading CFTC data&hellip;</div></div>
+    <p class="explain"><b>Why it moves gold:</b> every week the CFTC publishes how hedge
+    funds ("managed money") are positioned in gold futures. Rising net longs add fuel to
+    rallies &mdash; but <i>extreme</i> positioning works in reverse: when nearly everyone
+    is already long, there are few buyers left and the market becomes vulnerable to
+    sharp washouts; when longs have been flushed out, gold often finds a bottom. Traders
+    therefore read this as a contrarian gauge at the extremes. The percentile compares
+    today's net position with the past three years of weekly readings.</p>
+  </div>
+
+  <div class="note">
+    Sources: OECD (10Y yields, CPI), Binance PAXG/USDT (tokenised gold, a close proxy for
+    spot XAU/USD used for price history), gold-api.com (live spot), ECB reference rates via
+    Frankfurter (dollar index proxy, DXY weights), CFTC Commitments of Traders (managed-money
+    positioning, published weekly with a few days' lag). All data is fetched live by your
+    browser on every visit. Informational only &mdash; not investment advice.
+  </div>
+
+  <div class="note">Built by <a href="https://github.com/jeykay16" style="color:var(--accent)">jeykay16</a>
+    &middot; Data: <a href="https://data-explorer.oecd.org" style="color:var(--accent)">OECD</a>
+    &amp; <a href="https://data.bis.org" style="color:var(--accent)">BIS</a>
+    &middot; <a href="https://github.com/jeykay16/real-yields" style="color:var(--accent)">Source code</a></div>
+</div>
+
+<script>
+const OECD = "https://sdmx.oecd.org/public/rest/data";
+const fmtSign = v => (v >= 0 ? "+" : "") + v.toFixed(2);
+const badge = (el, text, cls) => {
+  const e = document.getElementById(el);
+  e.textContent = text; e.className = "badge " + cls;
+};
+const tag = s => s > 0 ? ["&#9650; Bullish", "pos"] : s < 0 ? ["&#9660; Bearish", "neg"] : ["&#9679; Neutral", "neut"];
+
+// factors gathered by the three panels, then combined in the scorecard
+const scoreFactors = { ry: null, usd: null, cot: null };
+
+/* ---------- panel 1: real yields vs gold ---------- */
+
+function parseSimpleCsv(text) {
+  if (!text.startsWith("DATAFLOW")) return [];
+  const lines = text.trim().split("\n");
+  const header = lines[0].split(",");
+  return lines.slice(1).map(line => {
+    const cells = line.split(",");
+    const row = {};
+    header.forEach((h, i) => row[h.trim()] = (cells[i] || "").trim());
+    return row;
+  });
+}
+
+async function fetchOecd(url) {
+  const resp = await fetch(url);
+  if (resp.status === 404) return [];
+  if (!resp.ok) throw new Error("OECD HTTP " + resp.status);
+  return parseSimpleCsv(await resp.text());
+}
+
+function monthStart(monthsBack) {
+  const d = new Date();
+  const t = d.getFullYear() * 12 + d.getMonth() - monthsBack;
+  return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, "0")}`;
+}
+
+async function loadRealYieldPanel() {
+  const start = monthStart(15);
+  const [yRows, cRows, klines, spotResp] = await Promise.all([
+    fetchOecd(`${OECD}/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/USA.M.IRLT.PA.....?startPeriod=${start}&format=csvfile`),
+    fetchOecd(`${OECD}/OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0/USA.M.N.CPI.PA._T.N.GY?startPeriod=${start}&format=csvfile`),
+    fetch("https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=1d&limit=460").then(r => r.json()),
+    fetch("https://api.gold-api.com/price/XAU").then(r => r.ok ? r.json() : null).catch(() => null),
+  ]);
+
+  // monthly matched real-yield series
+  const y = {}, c = {};
+  for (const r of yRows) if (r.FREQ === "M") y[r.TIME_PERIOD] = parseFloat(r.OBS_VALUE);
+  for (const r of cRows) if (r.FREQ === "M") c[r.TIME_PERIOD] = parseFloat(r.OBS_VALUE);
+  const months = Object.keys(y).filter(p => p in c).sort();
+  const ry = months.map(p => {
+    const [yy, mm] = p.split("-").map(Number);
+    return { t: new Date(yy, mm - 1, 15).getTime(), v: y[p] - c[p], p };
+  });
+  if (!ry.length) throw new Error("no matched real-yield months");
+
+  // daily gold closes
+  const gold = klines.map(k => ({ t: k[0], v: parseFloat(k[4]) }));
+  const lastGold = gold[gold.length - 1].v;
+  const spot = spotResp && spotResp.price ? spotResp.price : lastGold;
+  const goldMonthAgo = gold[Math.max(0, gold.length - 31)].v;
+  const goldYearAgo = gold[Math.max(0, gold.length - 366)].v;
+
+  // monthly gold averages for the correlation stat
+  const byMonth = {};
+  for (const g of gold) {
+    const d = new Date(g.t);
+    const p = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    (byMonth[p] = byMonth[p] || []).push(g.v);
+  }
+  const pairs = ry.filter(r => byMonth[r.p]).map(r =>
+    [r.v, byMonth[r.p].reduce((a, b) => a + b, 0) / byMonth[r.p].length]);
+  let corr = null;
+  if (pairs.length >= 6) {
+    const mx = pairs.reduce((s, p) => s + p[0], 0) / pairs.length;
+    const my = pairs.reduce((s, p) => s + p[1], 0) / pairs.length;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (const [px, py] of pairs) {
+      sxy += (px - mx) * (py - my); sxx += (px - mx) ** 2; syy += (py - my) ** 2;
+    }
+    if (sxx > 0 && syy > 0) corr = sxy / Math.sqrt(sxx * syy);
+  }
+
+  const nowReal = ry[ry.length - 1].v;
+  const prevReal = ry[Math.max(0, ry.length - 4)].v;
+  const chg = nowReal - prevReal;
+  const s = (nowReal < 0 ? 2 : nowReal < 1 ? 1 : nowReal < 2 ? -1 : -2) +
+            (chg < -0.25 ? 1 : chg > 0.25 ? -1 : 0);
+  scoreFactors.ry = {
+    s: Math.max(-1, Math.min(1, s)),
+    label: `Real yields: ${fmtSign(nowReal)}% and ${chg < -0.25 ? "falling" : chg > 0.25 ? "rising" : "flat"} (${fmtSign(chg)}pp / 3m)`,
+    reason: s > 0 ? "Low/falling real yields shrink the cost of holding gold." :
+            s < 0 ? "High/rising real yields make bonds more attractive than gold." :
+            "Real yields are neither cheap nor dear, nor moving much.",
+  };
+  const [t1, c1] = tag(scoreFactors.ry.s);
+  badge("ryBadge", t1.replace(/&#\d+; /, "").toUpperCase() + " FOR GOLD", c1);
+
+  document.getElementById("ryStats").innerHTML = `
+    <div class="stat"><div class="v goldc">$${spot.toFixed(0)}</div><div class="k">gold spot (live)</div></div>
+    <div class="stat"><div class="v ${lastGold >= goldMonthAgo ? "pos" : "neg"}">${fmtSign((lastGold / goldMonthAgo - 1) * 100)}%</div><div class="k">gold, 1 month</div></div>
+    <div class="stat"><div class="v ${lastGold >= goldYearAgo ? "pos" : "neg"}">${fmtSign((lastGold / goldYearAgo - 1) * 100)}%</div><div class="k">gold, 12 months</div></div>
+    <div class="stat"><div class="v ${nowReal >= 0 ? "pos" : "neg"}">${fmtSign(nowReal)}%</div><div class="k">US 10Y real yield (${ry[ry.length - 1].p})</div></div>
+    ${corr === null ? "" : `<div class="stat"><div class="v">${corr.toFixed(2)}</div><div class="k">correlation, monthly (−1 = perfect inverse)</div></div>`}`;
+
+  drawChart(ry, gold);
+}
+
+function drawChart(ry, gold) {
+  const W = 860, H = 340, ml = 46, mr = 64, mt = 14, mb = 28;
+  const x0 = Math.min(ry[0].t, gold[0].t), x1 = Date.now();
+  const X = t => ml + (t - x0) / (x1 - x0) * (W - ml - mr);
+
+  const ryMin = Math.min(...ry.map(d => d.v)), ryMax = Math.max(...ry.map(d => d.v));
+  const ryPad = Math.max(0.2, (ryMax - ryMin) * 0.15);
+  const rLo = ryMin - ryPad, rHi = ryMax + ryPad;
+  const Y1 = v => mt + (rHi - v) / (rHi - rLo) * (H - mt - mb);
+
+  const gMin = Math.min(...gold.map(d => d.v)), gMax = Math.max(...gold.map(d => d.v));
+  const gPad = (gMax - gMin) * 0.08;
+  const gLo = gMin - gPad, gHi = gMax + gPad;
+  const Y2 = v => mt + (gHi - v) / (gHi - gLo) * (H - mt - mb);
+
+  const line = (data, Y) => data.map((d, i) => (i ? "L" : "M") + X(d.t).toFixed(1) + " " + Y(d.v).toFixed(1)).join(" ");
+
+  // horizontal grid + left labels (real yield), right labels (gold)
+  let grid = "";
+  const steps = 5;
+  for (let i = 0; i <= steps; i++) {
+    const yy = mt + i / steps * (H - mt - mb);
+    const rv = rHi - i / steps * (rHi - rLo);
+    const gv = gHi - i / steps * (gHi - gLo);
+    grid += `<line x1="${ml}" y1="${yy}" x2="${W - mr}" y2="${yy}" stroke="#263048" stroke-width="1"/>` +
+      `<text x="${ml - 6}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#60a5fa">${rv.toFixed(1)}%</text>` +
+      `<text x="${W - mr + 6}" y="${yy + 4}" font-size="11" fill="#f0c34e">$${Math.round(gv)}</text>`;
+  }
+  // x labels every ~2 months
+  let xlab = "";
+  const d0 = new Date(x0);
+  for (let d = new Date(d0.getFullYear(), d0.getMonth() + 1, 1); d.getTime() < x1; d.setMonth(d.getMonth() + 2)) {
+    xlab += `<text x="${X(d.getTime())}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#8b95ab">` +
+      `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()]} ${String(d.getFullYear()).slice(2)}</text>`;
+  }
+
+  document.getElementById("chart").innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg">
+      ${grid}${xlab}
+      <path d="${line(gold, Y2)}" fill="none" stroke="#f0c34e" stroke-width="2"/>
+      <path d="${line(ry, Y1)}" fill="none" stroke="#60a5fa" stroke-width="2.5"/>
+      ${ry.map(d => `<circle cx="${X(d.t)}" cy="${Y1(d.v)}" r="3.5" fill="#60a5fa"/>`).join("")}
+    </svg>`;
+}
+
+/* ---------- panel 2: dollar index proxy ---------- */
+
+async function loadDollarPanel() {
+  const WEIGHTS = { EUR: 0.576, JPY: 0.136, GBP: 0.119, CAD: 0.091, SEK: 0.042, CHF: 0.036 };
+  const start = new Date(); start.setMonth(start.getMonth() - 13);
+  const url = `https://api.frankfurter.dev/v1/${start.toISOString().slice(0, 10)}..` +
+    `?base=USD&symbols=${Object.keys(WEIGHTS).join(",")}`;
+  const data = await (await fetch(url)).json();
+  const dates = Object.keys(data.rates).sort();
+  if (dates.length < 30) throw new Error("not enough FX history");
+
+  // geometric DXY-weight index, first day = 100
+  const first = data.rates[dates[0]];
+  const idx = dates.map(d => {
+    let v = 1;
+    for (const [ccy, w] of Object.entries(WEIGHTS)) v *= Math.pow(data.rates[d][ccy] / first[ccy], w);
+    return { d, v: v * 100 };
+  });
+  const last = idx[idx.length - 1];
+  const back = n => idx[Math.max(0, idx.length - 1 - n)].v;
+  const m1 = (last.v / back(21) - 1) * 100;
+  const m3 = (last.v / back(64) - 1) * 100;
+  const m12 = (idx.length > 250 ? (last.v / idx[0].v - 1) * 100 : null);
+
+  const s = m3 < -2 ? 1 : m3 > 2 ? -1 : 0;
+  scoreFactors.usd = {
+    s,
+    label: `US dollar: ${fmtSign(m3)}% over 3 months`,
+    reason: s > 0 ? "A weakening dollar makes gold cheaper worldwide — a tailwind." :
+            s < 0 ? "A strengthening dollar makes gold dearer worldwide — a headwind." :
+            "The dollar is roughly stable, neither helping nor hurting gold.",
+  };
+  const [t2, c2] = tag(s);
+  badge("usdBadge", t2.replace(/&#\d+; /, "").toUpperCase() + " FOR GOLD", c2);
+
+  const cls = v => v <= 0 ? "pos" : "neg";  // dollar down = good for gold
+  document.getElementById("usdStats").innerHTML = `
+    <div class="stat"><div class="v">${last.v.toFixed(1)}</div><div class="k">USD index proxy (${dates[0]} = 100)</div></div>
+    <div class="stat"><div class="v ${cls(m1)}">${fmtSign(m1)}%</div><div class="k">1 month</div></div>
+    <div class="stat"><div class="v ${cls(m3)}">${fmtSign(m3)}%</div><div class="k">3 months</div></div>
+    ${m12 === null ? "" : `<div class="stat"><div class="v ${cls(m12)}">${fmtSign(m12)}%</div><div class="k">12 months</div></div>`}
+    <div class="stat"><div class="v muted">${last.d}</div><div class="k">latest ECB fixing</div></div>`;
+}
+
+/* ---------- panel 3: CFTC positioning ---------- */
+
+async function loadCotPanel() {
+  const url = "https://publicreporting.cftc.gov/resource/72hh-3qpy.json" +
+    "?cftc_contract_market_code=088691" +
+    "&$select=report_date_as_yyyy_mm_dd,m_money_positions_long_all,m_money_positions_short_all" +
+    "&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=160";
+  const rows = await (await fetch(url)).json();
+  if (!rows.length) throw new Error("no CFTC rows");
+  const hist = rows.map(r => ({
+    d: r.report_date_as_yyyy_mm_dd.slice(0, 10),
+    net: parseInt(r.m_money_positions_long_all) - parseInt(r.m_money_positions_short_all),
+  })).reverse();
+
+  const now = hist[hist.length - 1];
+  const prev = hist[Math.max(0, hist.length - 2)];
+  const pct = hist.filter(h => h.net <= now.net).length / hist.length * 100;
+
+  const s = pct > 85 ? -1 : pct < 15 ? 1 : 0;
+  scoreFactors.cot = {
+    s,
+    label: `Positioning: ${Math.round(pct)}th percentile of 3 years`,
+    reason: s < 0 ? "Funds are near maximum long — crowded trades are fragile, a contrarian warning." :
+            s > 0 ? "Longs have been washed out — plenty of sidelined buyers, a contrarian positive." :
+            "Positioning is unstretched, leaving room for funds to add in either direction.",
+  };
+  const [t3, c3] = tag(s);
+  badge("cotBadge", t3.replace(/&#\d+; /, "").toUpperCase() + " FOR GOLD", c3);
+
+  const wk = now.net - prev.net;
+  document.getElementById("cotStats").innerHTML = `
+    <div class="stat"><div class="v">${now.net.toLocaleString()}</div><div class="k">managed-money net contracts</div></div>
+    <div class="stat"><div class="v ${wk >= 0 ? "pos" : "neg"}">${(wk >= 0 ? "+" : "") + wk.toLocaleString()}</div><div class="k">change vs prior week</div></div>
+    <div class="stat"><div class="v">${Math.round(pct)}<span style="font-size:13px">th</span></div><div class="k">percentile (3y of weekly data)</div></div>
+    <div class="stat"><div class="v muted">${now.d}</div><div class="k">report date</div></div>`;
+}
+
+/* ---------- scorecard ---------- */
+
+function renderScorecard() {
+  const fs = [scoreFactors.ry, scoreFactors.usd, scoreFactors.cot].filter(Boolean);
+  if (!fs.length) {
+    document.getElementById("scoreBody").innerHTML =
+      `<div class="err">No panels could load — check your connection and refresh.</div>`;
+    return;
+  }
+  const score = fs.reduce((s, f) => s + f.s, 0);
+  const [text, cls] =
+    score >= 2 ? ["BULLISH for gold", "bull"] :
+    score === 1 ? ["MILDLY BULLISH for gold", "bull"] :
+    score === 0 ? ["MIXED / NEUTRAL for gold", "neut"] :
+    score === -1 ? ["MILDLY BEARISH for gold", "bear"] :
+    ["BEARISH for gold", "bear"];
+  badge("scoreBadge", text, cls);
+  document.getElementById("scoreBody").innerHTML =
+    `<ul class="factors">${fs.map(f => {
+      const [t, c] = tag(f.s);
+      return `<li><span class="factor-tag ${c}">${t}</span><span><b>${f.label}</b> &mdash; ${f.reason}</span></li>`;
+    }).join("")}</ul>
+    <p class="explain">The verdict sums the three factors${fs.length < 3 ?
+      " (some panels failed to load and are excluded)" : ""}. Real yields carry the most
+    weight conceptually; the dollar and positioning confirm or contradict. When all three
+    point the same way, the signal has historically been at its most reliable.</p>`;
+}
+
+/* ---------- orchestrate ---------- */
+
+(async () => {
+  const jobs = [
+    loadRealYieldPanel().catch(e => {
+      document.getElementById("ryStats").innerHTML = "";
+      document.getElementById("chart").innerHTML = `<div class="err">Could not load: ${e.message}</div>`;
+    }),
+    loadDollarPanel().catch(e => {
+      document.getElementById("usdStats").innerHTML = `<div class="err">Could not load: ${e.message}</div>`;
+    }),
+    loadCotPanel().catch(e => {
+      document.getElementById("cotStats").innerHTML = `<div class="err">Could not load: ${e.message}</div>`;
+    }),
+  ];
+  await Promise.all(jobs);
+  renderScorecard();
+  document.getElementById("status").textContent =
+    `Last updated ${new Date().toLocaleString()} · all data refreshes on every visit`;
+})();
+</script>
+</body>
+</html>

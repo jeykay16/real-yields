@@ -15,6 +15,10 @@ gold (XAU/USD) signal and a central-bank rate-meetings calendar.
 - **Rate meetings** (`meetings.html`) — each central bank's current policy rate,
   its last rate change, 12-month move, stance (cutting / hiking / on hold), and
   the upcoming 2026 decision dates.
+- **Gold drivers** (`gold.html`) — the three forces that move XAU/USD, measured
+  live: a real-yield vs gold-price chart with correlation, a DXY-weighted dollar
+  index proxy, and CFTC managed-money positioning with a 3-year percentile, all
+  combined into an overall scorecard.
 
 ## How it works
 
@@ -25,6 +29,12 @@ the data directly from public APIs on every page load:
   and CPI inflation (main and G20 price dataflows).
 - **BIS Stats API** — daily central bank policy rates; last changes and stances
   are computed client-side from the daily series.
+- **Binance API** — PAXG/USDT daily closes (tokenised gold) as the gold price
+  history proxy, plus gold-api.com for the live spot price.
+- **Frankfurter API** — ECB reference rates, combined with DXY weights into a
+  dollar-index proxy.
+- **CFTC Public Reporting API** — weekly Commitments of Traders disaggregated
+  data (managed-money gold futures positioning).
 
 Meeting dates are the officially published 2026 central-bank schedules,
 cross-checked against each bank's own calendar.
