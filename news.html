@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market News &amp; Economic Calendar</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --card: #171e2e;
+    --border: #263048;
+    --text: #e8ecf4;
+    --muted: #8b95ab;
+    --pos: #34d399;
+    --neg: #f87171;
+    --accent: #60a5fa;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 26px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .nav { margin: 0 0 18px; display: flex; gap: 14px; font-size: 14px; flex-wrap: wrap; }
+  .nav a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .nav a:hover { text-decoration: underline; }
+  .nav .here { color: var(--muted); font-weight: 600; }
+  .status { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 16px;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 17px; font-weight: 650; }
+  .card .cap { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .chips { display: flex; gap: 7px; flex-wrap: wrap; margin: 10px 0; }
+  .chip {
+    background: #1b2438; border: 1px solid var(--border); color: var(--text);
+    padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    cursor: pointer; user-select: none;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #0b1020; }
+  .muted { color: var(--muted); }
+  .loading-msg { color: var(--muted); font-size: 13px; padding: 16px 0; }
+  .err { color: var(--neg); font-size: 13px; padding: 10px 0; }
+
+  /* calendar */
+  .day-head {
+    font-size: 13px; font-weight: 700; color: var(--accent);
+    padding: 12px 0 6px; border-bottom: 1px solid var(--border);
+  }
+  .day-head.today { color: var(--warn); }
+  table.cal { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .cal td { padding: 7px 8px; vertical-align: top; }
+  .cal tr { border-top: 1px solid var(--border); }
+  .cal tr:first-child { border-top: none; }
+  .cal tr.past { opacity: 0.45; }
+  .cal .t { white-space: nowrap; color: var(--muted); width: 70px; }
+  .cal .cur { font-weight: 700; width: 46px; }
+  .imp { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 2px; }
+  .imp.High { background: var(--neg); }
+  .imp.Medium { background: var(--warn); }
+  .imp.Low { background: #4b5568; }
+  .cal .fx { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+  /* news list */
+  .news-item {
+    padding: 10px 0; border-top: 1px solid var(--border);
+    font-size: 14px; line-height: 1.5;
+  }
+  .news-item:first-of-type { border-top: none; }
+  .news-item a { color: var(--text); text-decoration: none; font-weight: 600; }
+  .news-item a:hover { color: var(--accent); }
+  .news-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .news-meta .ago { color: var(--warn); font-weight: 600; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 14px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Market News &amp; Economic Calendar</h1>
+  <div class="sub">What's scheduled to move markets this week, and what's moving them right now</div>
+
+  <div class="nav">
+    <a href="index.html">&larr; Real yields</a>
+    <a href="meetings.html">Rate meetings</a>
+    <a href="gold.html">Gold drivers</a>
+    <span class="here">News</span>
+  </div>
+
+  <div class="status" id="status">Loading&hellip;</div>
+
+  <!-- economic calendar -->
+  <div class="card">
+    <h2>This week's scheduled releases</h2>
+    <div class="cap">Economic data, central-bank decisions and speeches, with market-impact ratings
+      &middot; times shown in your local timezone <span id="calUpd"></span></div>
+    <div class="chips" id="impChips">
+      <span class="chip" data-imp="All">All impact</span>
+      <span class="chip" data-imp="Medium">Medium+</span>
+      <span class="chip on" data-imp="High">High only</span>
+    </div>
+    <div class="chips" id="curChips"></div>
+    <div id="calBody"><div class="loading-msg">Loading the weekly calendar&hellip;</div></div>
+  </div>
+
+  <!-- live headlines -->
+  <div class="card">
+    <h2>Live market-moving headlines</h2>
+    <div class="cap">Latest coverage from thousands of news sources worldwide, indexed roughly every
+      15 minutes &middot; click a headline to read the full story at the source</div>
+    <div class="chips" id="topicChips">
+      <span class="chip on" data-q="all">All</span>
+      <span class="chip" data-q="fed">Fed &amp; rates</span>
+      <span class="chip" data-q="data">Inflation &amp; data</span>
+      <span class="chip" data-q="politics">White House &amp; tariffs</span>
+      <span class="chip" data-q="geo">Geopolitics</span>
+      <span class="chip" data-q="gold">Gold</span>
+    </div>
+    <div id="newsBody"><div class="loading-msg">Loading headlines&hellip;</div></div>
+  </div>
+
+  <div class="note">
+    Calendar: weekly feed of scheduled economic events (impact ratings as published by the feed;
+    red = high impact, amber = medium), regenerated automatically every six hours by a scheduled
+    workflow. Headlines: GDELT project index of worldwide online news
+    &mdash; new stories typically appear within about 15 minutes of publication and the list
+    refreshes automatically every 5 minutes while the page is open. Headlines link directly to
+    the original source; coverage and accuracy are the source's responsibility. Nothing here is
+    investment advice.
+  </div>
+
+  <div class="note">Built by <a href="https://github.com/jeykay16" style="color:var(--accent)">jeykay16</a>
+    &middot; Data: <a href="https://data-explorer.oecd.org" style="color:var(--accent)">OECD</a>
+    &amp; <a href="https://data.bis.org" style="color:var(--accent)">BIS</a>
+    &middot; <a href="https://github.com/jeykay16/real-yields" style="color:var(--accent)">Source code</a></div>
+</div>
+
+<script>
+/* ---------- helpers ---------- */
+
+function cacheGet(key, maxAgeMs) {
+  try {
+    const c = JSON.parse(localStorage.getItem(key));
+    if (c && Date.now() - c.t < maxAgeMs) return c.data;
+    return c ? { stale: true, data: c.data, t: c.t } : null;
+  } catch (e) { return null; }
+}
+function cacheSet(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ t: Date.now(), data })); } catch (e) {}
+}
+function ago(ms) {
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h " + (m % 60) + "m ago";
+  return Math.floor(h / 24) + "d ago";
+}
+
+/* ---------- economic calendar (weekly feed) ---------- */
+
+const CURRENCIES = ["All", "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD", "CNY"];
+let calEvents = null;
+let impFilter = localStorage.getItem("calImp") || "High";
+let curFilter = localStorage.getItem("calCur") || "All";
+
+let calUpdated = null;
+
+async function loadCalendar() {
+  try {
+    const resp = await fetch("data/calendar.json", { cache: "no-cache" });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+    calEvents = data.events || data;
+    calUpdated = data.updated || null;
+  } catch (e) {
+    document.getElementById("calBody").innerHTML =
+      `<div class="err">Calendar data unavailable (${e.message}) — it is regenerated automatically every 6 hours.</div>`;
+    return;
+  }
+  renderCalendar();
+}
+
+function renderCalendar() {
+  if (!calEvents) return;
+  const impRank = { Low: 0, Medium: 1, High: 2, Holiday: 0 };
+  const minRank = impFilter === "All" ? 0 : impFilter === "Medium" ? 1 : 2;
+  const evs = calEvents
+    .map(e => ({ ...e, ts: new Date(e.date).getTime() }))
+    .filter(e => (impRank[e.impact] || 0) >= minRank)
+    .filter(e => curFilter === "All" || e.country === curFilter)
+    .sort((a, b) => a.ts - b.ts);
+
+  if (!evs.length) {
+    document.getElementById("calBody").innerHTML =
+      `<div class="loading-msg">No events match these filters this week.</div>`;
+    return;
+  }
+
+  if (calUpdated) document.getElementById("calUpd").textContent =
+    "· calendar refreshed " + ago(new Date(calUpdated).getTime());
+  const todayKey = new Date().toDateString();
+  const byDay = {};
+  for (const e of evs) (byDay[new Date(e.ts).toDateString()] = byDay[new Date(e.ts).toDateString()] || []).push(e);
+
+  let html = "";
+  for (const day of Object.keys(byDay)) {
+    const d = new Date(byDay[day][0].ts);
+    html += `<div class="day-head ${day === todayKey ? "today" : ""}">` +
+      d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" }) +
+      (day === todayKey ? " — today" : "") + `</div><table class="cal">`;
+    for (const e of byDay[day]) {
+      const past = e.ts < Date.now();
+      const time = new Date(e.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+      const fx = [e.forecast ? "fcst " + e.forecast : "", e.previous ? "prev " + e.previous : ""]
+        .filter(Boolean).join(" · ");
+      html += `<tr class="${past ? "past" : ""}">
+        <td class="t">${time}</td>
+        <td class="cur">${e.country}</td>
+        <td><span class="imp ${e.impact}"></span></td>
+        <td>${e.title}</td>
+        <td class="fx">${fx}</td>
+      </tr>`;
+    }
+    html += `</table>`;
+  }
+  document.getElementById("calBody").innerHTML = html;
+}
+
+document.querySelectorAll("#impChips .chip").forEach(ch => {
+  ch.onclick = () => {
+    impFilter = ch.dataset.imp;
+    localStorage.setItem("calImp", impFilter);
+    document.querySelectorAll("#impChips .chip").forEach(c => c.classList.toggle("on", c === ch));
+    renderCalendar();
+  };
+});
+document.getElementById("curChips").innerHTML = CURRENCIES.map(c =>
+  `<span class="chip ${c === curFilter ? "on" : ""}" data-cur="${c}">${c}</span>`).join("");
+document.querySelectorAll("#curChips .chip").forEach(ch => {
+  ch.onclick = () => {
+    curFilter = ch.dataset.cur;
+    localStorage.setItem("calCur", curFilter);
+    document.querySelectorAll("#curChips .chip").forEach(c => c.classList.toggle("on", c === ch));
+    renderCalendar();
+  };
+});
+
+/* ---------- live headlines (GDELT) ---------- */
+
+const TOPICS = {
+  all: '("federal reserve" OR inflation OR tariff OR "gold price" OR "jobs report" OR "interest rates" OR sanctions)',
+  fed: '("federal reserve" OR FOMC OR "jerome powell" OR "interest rate decision" OR "rate cut" OR "rate hike")',
+  data: '(inflation OR "consumer price index" OR "jobs report" OR "nonfarm payrolls" OR unemployment OR GDP OR PMI OR "retail sales")',
+  politics: '("white house" OR "president trump" OR tariff OR tariffs OR "trade deal" OR "executive order")',
+  geo: '(geopolitical OR sanctions OR missile OR airstrike OR ceasefire OR "military conflict" OR escalation)',
+  gold: '("gold price" OR "gold prices" OR bullion OR "gold rally" OR "gold market" OR "safe haven")',
+};
+let topic = "all";
+let lastGdeltCall = 0;
+
+function dedupe(articles) {
+  const seen = new Set(), perDomain = {}, out = [];
+  for (const a of articles) {
+    const key = (a.title || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 60);
+    if (!key || seen.has(key)) continue;
+    perDomain[a.domain] = (perDomain[a.domain] || 0) + 1;
+    if (perDomain[a.domain] > 2) continue;
+    seen.add(key);
+    out.push(a);
+  }
+  return out;
+}
+
+async function loadNews(force) {
+  const cacheKey = "gdelt_" + topic;
+  const cached = cacheGet(cacheKey, 5 * 60 * 1000);
+  if (cached && !cached.stale && !force) { renderNews(cached); return; }
+
+  // GDELT asks for at most one request every 5 seconds
+  const wait = Math.max(0, lastGdeltCall + 5500 - Date.now());
+  if (wait) await new Promise(r => setTimeout(r, wait));
+  lastGdeltCall = Date.now();
+
+  try {
+    const q = encodeURIComponent(TOPICS[topic] + " sourcelang:eng");
+    const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${q}` +
+      `&mode=artlist&maxrecords=50&format=json&sort=datedesc&timespan=2d`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+    const articles = dedupe(data.articles || []);
+    cacheSet(cacheKey, articles);
+    renderNews(articles);
+  } catch (e) {
+    if (cached) { renderNews(cached.stale ? cached.data : cached); return; }
+    document.getElementById("newsBody").innerHTML =
+      `<div class="err">Could not load headlines (${e.message}) — will retry automatically.</div>`;
+  }
+}
+
+function renderNews(articles) {
+  if (!articles || !articles.length) {
+    document.getElementById("newsBody").innerHTML =
+      `<div class="loading-msg">No recent stories found for this topic.</div>`;
+    return;
+  }
+  document.getElementById("newsBody").innerHTML = articles.slice(0, 25).map(a => {
+    // seendate format: 20260706T121500Z
+    const m = (a.seendate || "").match(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/);
+    const ts = m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null;
+    return `<div class="news-item">
+      <a href="${a.url}" target="_blank" rel="noopener">${a.title}</a>
+      <div class="news-meta">${ts ? `<span class="ago">${ago(ts)}</span> · ` : ""}${a.domain}` +
+      `${a.sourcecountry ? " · " + a.sourcecountry : ""}</div>
+    </div>`;
+  }).join("");
+}
+
+document.querySelectorAll("#topicChips .chip").forEach(ch => {
+  ch.onclick = () => {
+    topic = ch.dataset.q;
+    document.querySelectorAll("#topicChips .chip").forEach(c => c.classList.toggle("on", c === ch));
+    document.getElementById("newsBody").innerHTML = `<div class="loading-msg">Loading headlines&hellip;</div>`;
+    loadNews();
+  };
+});
+
+/* ---------- orchestrate ---------- */
+
+(async () => {
+  await Promise.all([loadCalendar(), loadNews()]);
+  document.getElementById("status").textContent =
+    `Last updated ${new Date().toLocaleString()} · headlines refresh every 5 min, calendar every 30 min`;
+})();
+setInterval(() => { if (!document.hidden) loadNews(true); }, 5 * 60 * 1000);
+setInterval(() => { if (!document.hidden) loadCalendar(); }, 30 * 60 * 1000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { loadNews(); loadCalendar(); }
+});
+</script>
+</body>
+</html>

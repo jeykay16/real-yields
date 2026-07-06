@@ -1,0 +1,36 @@
+name: Update economic calendar
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"   # every 6 hours
+  workflow_dispatch:          # allow manual runs
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch weekly calendar feed
+        run: |
+          mkdir -p data
+          curl -sf --max-time 60 --retry 3 --retry-delay 30 \
+            -A "real-yields-dashboard/1.0 (github.com/jeykay16/real-yields)" \
+            "https://nfs.faireconomy.media/ff_calendar_thisweek.json" -o /tmp/feed.json
+          python3 -c "import json; json.load(open('/tmp/feed.json'))"   # validate JSON
+          python3 - <<'EOF'
+          import json, datetime
+          events = json.load(open("/tmp/feed.json"))
+          out = {"updated": datetime.datetime.now(datetime.timezone.utc).isoformat(), "events": events}
+          json.dump(out, open("data/calendar.json", "w"))
+          EOF
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/calendar.json
+          git diff --cached --quiet || { git commit -m "Update economic calendar data"; git push; }
