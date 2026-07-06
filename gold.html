@@ -72,6 +72,22 @@
   }
   .tick-up { color: var(--pos) !important; transition: color .2s; }
   .tick-down { color: var(--neg) !important; transition: color .2s; }
+  .range-bar {
+    display: flex; gap: 7px; align-items: center; flex-wrap: wrap; margin-top: 14px;
+  }
+  .rchip {
+    background: #1b2438; border: 1px solid var(--border); color: var(--text);
+    padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    cursor: pointer; user-select: none;
+  }
+  .rchip:hover { border-color: var(--accent); }
+  .rchip.on { background: var(--accent); border-color: var(--accent); color: #0b1020; }
+  .range-bar label { color: var(--muted); font-size: 12px; margin-left: 6px; }
+  .range-bar input[type="date"] {
+    background: #1b2438; border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 4px 8px; font-size: 12px; font-family: inherit;
+    color-scheme: dark;
+  }
   .legend { display: flex; gap: 20px; margin-top: 8px; font-size: 12px; color: var(--muted); }
   .legend span::before {
     content: ""; display: inline-block; width: 18px; height: 3px;
@@ -107,6 +123,18 @@
   <div class="card" id="ryCard">
     <h2>1 &middot; Real yields vs the gold price <span class="badge neut" id="ryBadge">&hellip;</span></h2>
     <div class="stats" id="ryStats"></div>
+    <div class="range-bar" id="rangeBar">
+      <span class="rchip" data-r="1M">1M</span>
+      <span class="rchip" data-r="3M">3M</span>
+      <span class="rchip" data-r="6M">6M</span>
+      <span class="rchip" data-r="1Y">1Y</span>
+      <span class="rchip" data-r="2Y">2Y</span>
+      <span class="rchip" data-r="5Y">5Y</span>
+      <span class="rchip" data-r="10Y">10Y</span>
+      <span class="rchip" data-r="Max">Max</span>
+      <label>from</label><input type="date" id="fromDate">
+      <label>to</label><input type="date" id="toDate">
+    </div>
     <div class="chart-box" id="chart"><div class="loading-msg">Building chart&hellip;</div></div>
     <div class="legend">
       <span class="l-gold">Gold price, USD/oz (right axis)</span>
@@ -147,7 +175,8 @@
 
   <div class="note">
     Sources: OECD (10Y yields, CPI), Binance PAXG/USDT (tokenised gold, a close proxy for
-    spot XAU/USD used for price history), gold-api.com (live spot), ECB reference rates via
+    spot XAU/USD used for daily price history since 2020), IMF primary commodity prices
+    (monthly gold back to 1992, scaled to USD/oz), gold-api.com (live spot), ECB reference rates via
     Frankfurter (dollar index proxy, DXY weights), CFTC Commitments of Traders (managed-money
     positioning, published weekly with a few days' lag). All data is fetched live by your
     browser on every visit. Informational only &mdash; not investment advice.
@@ -198,16 +227,67 @@ function monthStart(monthsBack) {
   return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, "0")}`;
 }
 
+// full-history data shared by the chart, range filter, and live ticker
+const DATA = { ry: [], gold: [] };
+
+function valueAt(arr, t) {
+  let best = arr[0];
+  for (const p of arr) { if (p.t <= t) best = p; else break; }
+  return best;
+}
+
+function monthlyAverages(points) {
+  const byMonth = {};
+  for (const g of points) {
+    const d = new Date(g.t);
+    const p = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    (byMonth[p] = byMonth[p] || []).push(g.v);
+  }
+  const out = {};
+  for (const p in byMonth) out[p] = byMonth[p].reduce((a, b) => a + b, 0) / byMonth[p].length;
+  return out;
+}
+
+async function fetchBinanceAll() {
+  let out = [], start = 1598572800000; // PAXG listed on Binance late Aug 2020
+  for (let i = 0; i < 6; i++) {
+    const ks = await (await fetch("https://api.binance.com/api/v3/klines?symbol=PAXGUSDT" +
+      `&interval=1d&startTime=${start}&limit=1000`)).json();
+    if (!Array.isArray(ks) || !ks.length) break;
+    for (const k of ks) out.push({ t: k[0], v: parseFloat(k[4]) });
+    if (ks.length < 1000) break;
+    start = ks[ks.length - 1][0] + 86400000;
+  }
+  return out;
+}
+
+async function fetchImfGoldMonthly() {
+  // IMF PCPS monthly gold index (2016=100), back to 1992; calibrated to USD later
+  const resp = await fetch("https://api.imf.org/external/sdmx/2.1/data/IMF.RES,PCPS,9.0.0/" +
+    "G001.PGOLD.INDEX.M?startPeriod=1990", { headers: { Accept: "application/vnd.sdmx.data+csv" } });
+  if (!resp.ok) return [];
+  const out = [];
+  for (const line of (await resp.text()).split("\n")) {
+    const c = line.split(",");
+    if (c[4] === "M" && /^\d{4}-M\d{2}$/.test(c[5] || "")) {
+      const v = parseFloat(c[6]);
+      const [yy, mm] = c[5].split("-M").map(Number);
+      if (isFinite(v)) out.push({ t: new Date(yy, mm - 1, 15).getTime(), v, p: `${yy}-${String(mm).padStart(2, "0")}` });
+    }
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
 async function loadRealYieldPanel() {
-  const start = monthStart(15);
-  const [yRows, cRows, klines, spotResp] = await Promise.all([
-    fetchOecd(`${OECD}/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/USA.M.IRLT.PA.....?startPeriod=${start}&format=csvfile`),
-    fetchOecd(`${OECD}/OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0/USA.M.N.CPI.PA._T.N.GY?startPeriod=${start}&format=csvfile`),
-    fetch("https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=1d&limit=460").then(r => r.json()),
+  const [yRows, cRows, binance, imfGold, spotResp] = await Promise.all([
+    fetchOecd(`${OECD}/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/USA.M.IRLT.PA.....?startPeriod=1989-01&format=csvfile`),
+    fetchOecd(`${OECD}/OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0/USA.M.N.CPI.PA._T.N.GY?startPeriod=1989-01&format=csvfile`),
+    fetchBinanceAll(),
+    fetchImfGoldMonthly().catch(() => []),
     fetch("https://api.gold-api.com/price/XAU").then(r => r.ok ? r.json() : null).catch(() => null),
   ]);
 
-  // monthly matched real-yield series
+  // monthly matched real-yield series, 1989 -> now
   const y = {}, c = {};
   for (const r of yRows) if (r.FREQ === "M") y[r.TIME_PERIOD] = parseFloat(r.OBS_VALUE);
   for (const r of cRows) if (r.FREQ === "M") c[r.TIME_PERIOD] = parseFloat(r.OBS_VALUE);
@@ -218,32 +298,28 @@ async function loadRealYieldPanel() {
   });
   if (!ry.length) throw new Error("no matched real-yield months");
 
-  // daily gold closes
-  const gold = klines.map(k => ({ t: k[0], v: parseFloat(k[4]) }));
-  const lastGold = gold[gold.length - 1].v;
-  const spot = spotResp && spotResp.price ? spotResp.price : lastGold;
-  const goldMonthAgo = gold[Math.max(0, gold.length - 31)].v;
-  const goldYearAgo = gold[Math.max(0, gold.length - 366)].v;
+  if (!binance.length) throw new Error("no gold price data");
 
-  // monthly gold averages for the correlation stat
-  const byMonth = {};
-  for (const g of gold) {
-    const d = new Date(g.t);
-    const p = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    (byMonth[p] = byMonth[p] || []).push(g.v);
-  }
-  const pairs = ry.filter(r => byMonth[r.p]).map(r =>
-    [r.v, byMonth[r.p].reduce((a, b) => a + b, 0) / byMonth[r.p].length]);
-  let corr = null;
-  if (pairs.length >= 6) {
-    const mx = pairs.reduce((s, p) => s + p[0], 0) / pairs.length;
-    const my = pairs.reduce((s, p) => s + p[1], 0) / pairs.length;
-    let sxy = 0, sxx = 0, syy = 0;
-    for (const [px, py] of pairs) {
-      sxy += (px - mx) * (py - my); sxx += (px - mx) ** 2; syy += (py - my) ** 2;
+  // calibrate the IMF index to USD/oz using the months both sources cover,
+  // then use IMF monthly points for the years before Binance data begins
+  let gold = binance;
+  if (imfGold.length) {
+    const paxgMonthly = monthlyAverages(binance);
+    const overlap = imfGold.filter(g => paxgMonthly[g.p]);
+    if (overlap.length >= 6) {
+      const factor = overlap.reduce((s, g) => s + paxgMonthly[g.p] / g.v, 0) / overlap.length;
+      gold = imfGold.filter(g => g.t < binance[0].t).map(g => ({ t: g.t, v: g.v * factor }))
+        .concat(binance);
     }
-    if (sxx > 0 && syy > 0) corr = sxy / Math.sqrt(sxx * syy);
   }
+
+  DATA.ry = ry;
+  DATA.gold = gold;
+
+  const lastGold = binance[binance.length - 1].v;
+  const spot = spotResp && spotResp.price ? spotResp.price : lastGold;
+  const goldMonthAgo = valueAt(gold, Date.now() - 30 * 86400000).v;
+  const goldYearAgo = valueAt(gold, Date.now() - 365 * 86400000).v;
 
   const nowReal = ry[ry.length - 1].v;
   const prevReal = ry[Math.max(0, ry.length - 4)].v;
@@ -265,20 +341,100 @@ async function loadRealYieldPanel() {
     <div class="stat"><div class="v ${lastGold >= goldMonthAgo ? "pos" : "neg"}">${fmtSign((lastGold / goldMonthAgo - 1) * 100)}%</div><div class="k">gold, 1 month</div></div>
     <div class="stat"><div class="v ${lastGold >= goldYearAgo ? "pos" : "neg"}">${fmtSign((lastGold / goldYearAgo - 1) * 100)}%</div><div class="k">gold, 12 months</div></div>
     <div class="stat"><div class="v ${nowReal >= 0 ? "pos" : "neg"}">${fmtSign(nowReal)}%</div><div class="k">US 10Y real yield (${ry[ry.length - 1].p})</div></div>
-    ${corr === null ? "" : `<div class="stat"><div class="v">${corr.toFixed(2)}</div><div class="k">correlation, monthly (−1 = perfect inverse)</div></div>`}`;
+    <div class="stat"><div class="v" id="corrVal">&mdash;</div><div class="k">correlation in shown window (&minus;1 = perfect inverse)</div></div>`;
 
-  drawChart(ry, gold);
+  initRange();
 }
 
-let chartState = null;
+/* ---------- time-range selection ---------- */
 
-function drawChart(ry, gold) {
-  chartState = { ry, gold };
+const PRESET_MONTHS = { "1M": 1, "3M": 3, "6M": 6, "1Y": 12, "2Y": 24, "5Y": 60, "10Y": 120, "Max": null };
+let range = { preset: "1Y" };
+try {
+  const saved = JSON.parse(localStorage.getItem("goldRange"));
+  if (saved && (saved.preset in PRESET_MONTHS || (saved.from && saved.to))) range = saved;
+} catch (e) { /* ignore */ }
+
+function rangeBounds() {
+  const now = Date.now();
+  if (range.preset) {
+    const m = PRESET_MONTHS[range.preset];
+    if (m === null) return [DATA.gold.length ? DATA.gold[0].t : now, now];
+    const d = new Date(); d.setMonth(d.getMonth() - m);
+    return [d.getTime(), now];
+  }
+  return [new Date(range.from + "T00:00").getTime(), new Date(range.to + "T23:59").getTime()];
+}
+
+function applyRange() {
+  const [x0, x1] = rangeBounds();
+  if (!(x1 > x0)) return;
+  const fGold = DATA.gold.filter(p => p.t >= x0 && p.t <= x1);
+  const fRy = DATA.ry.filter(p => p.t >= x0 && p.t <= x1);
+  drawChart(fRy, fGold, x0, x1);
+
+  // correlation between monthly gold averages and real yields, within the window
+  const gm = monthlyAverages(fGold);
+  const pairs = fRy.filter(r => gm[r.p]).map(r => [r.v, gm[r.p]]);
+  const corrEl = document.getElementById("corrVal");
+  if (corrEl) {
+    if (pairs.length >= 6) {
+      const mx = pairs.reduce((s, p) => s + p[0], 0) / pairs.length;
+      const my = pairs.reduce((s, p) => s + p[1], 0) / pairs.length;
+      let sxy = 0, sxx = 0, syy = 0;
+      for (const [px, py] of pairs) {
+        sxy += (px - mx) * (py - my); sxx += (px - mx) ** 2; syy += (py - my) ** 2;
+      }
+      corrEl.textContent = sxx > 0 && syy > 0 ? (sxy / Math.sqrt(sxx * syy)).toFixed(2) : "—";
+    } else {
+      corrEl.textContent = "—";
+    }
+  }
+
+  // reflect state in the controls
+  document.querySelectorAll(".rchip").forEach(ch =>
+    ch.classList.toggle("on", range.preset === ch.dataset.r));
+  const iso = t => new Date(t).toISOString().slice(0, 10);
+  document.getElementById("fromDate").value = iso(x0);
+  document.getElementById("toDate").value = iso(Math.min(x1, Date.now()));
+}
+
+function initRange() {
+  document.querySelectorAll(".rchip").forEach(ch => {
+    ch.onclick = () => {
+      range = { preset: ch.dataset.r };
+      localStorage.setItem("goldRange", JSON.stringify(range));
+      applyRange();
+    };
+  });
+  const onDate = () => {
+    const f = document.getElementById("fromDate").value;
+    const t = document.getElementById("toDate").value;
+    if (f && t && f < t) {
+      range = { from: f, to: t };
+      localStorage.setItem("goldRange", JSON.stringify(range));
+      applyRange();
+    }
+  };
+  document.getElementById("fromDate").onchange = onDate;
+  document.getElementById("toDate").onchange = onDate;
+  applyRange();
+}
+
+/* ---------- chart ---------- */
+
+function drawChart(ry, gold, x0, x1) {
   const W = 860, H = 340, ml = 46, mr = 64, mt = 14, mb = 28;
-  const x0 = Math.min(ry[0].t, gold[0].t), x1 = Date.now();
+  if (gold.length < 2) {
+    document.getElementById("chart").innerHTML =
+      `<div class="loading-msg">No gold data in this window — gold history starts in 1992.</div>`;
+    return;
+  }
   const X = t => ml + (t - x0) / (x1 - x0) * (W - ml - mr);
 
-  const ryMin = Math.min(...ry.map(d => d.v)), ryMax = Math.max(...ry.map(d => d.v));
+  const hasRy = ry.length >= 2;
+  const ryMin = hasRy ? Math.min(...ry.map(d => d.v)) : 0;
+  const ryMax = hasRy ? Math.max(...ry.map(d => d.v)) : 1;
   const ryPad = Math.max(0.2, (ryMax - ryMin) * 0.15);
   const rLo = ryMin - ryPad, rHi = ryMax + ryPad;
   const Y1 = v => mt + (rHi - v) / (rHi - rLo) * (H - mt - mb);
@@ -301,12 +457,29 @@ function drawChart(ry, gold) {
       `<text x="${ml - 6}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#60a5fa">${rv.toFixed(1)}%</text>` +
       `<text x="${W - mr + 6}" y="${yy + 4}" font-size="11" fill="#f0c34e">$${Math.round(gv)}</text>`;
   }
-  // x labels every ~2 months
+  // x labels: step adapts to the window length
+  const spanMonths = (x1 - x0) / (30.44 * 86400000);
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   let xlab = "";
   const d0 = new Date(x0);
-  for (let d = new Date(d0.getFullYear(), d0.getMonth() + 1, 1); d.getTime() < x1; d.setMonth(d.getMonth() + 2)) {
-    xlab += `<text x="${X(d.getTime())}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#8b95ab">` +
-      `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()]} ${String(d.getFullYear()).slice(2)}</text>`;
+  if (spanMonths <= 2) {           // weekly labels, "6 Jul"
+    for (let t = x0 + 7 * 86400000; t < x1; t += 7 * 86400000) {
+      const d = new Date(t);
+      xlab += `<text x="${X(t)}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#8b95ab">${d.getDate()} ${MONTHS[d.getMonth()]}</text>`;
+    }
+  } else if (spanMonths <= 60) {   // monthly labels, "Jul 26"
+    const step = spanMonths <= 9 ? 1 : spanMonths <= 20 ? 2 : spanMonths <= 40 ? 6 : 12;
+    for (let d = new Date(d0.getFullYear(), d0.getMonth() + 1, 1); d.getTime() < x1; d.setMonth(d.getMonth() + step)) {
+      xlab += `<text x="${X(d.getTime())}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#8b95ab">${MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}</text>`;
+    }
+  } else {                         // yearly labels
+    const step = spanMonths <= 150 ? 1 : spanMonths <= 300 ? 2 : 5;
+    const y0 = d0.getFullYear() + 1;
+    for (let yy = y0 + (step - y0 % step) % step; ; yy += step) {
+      const t = new Date(yy, 0, 1).getTime();
+      if (t >= x1) break;
+      xlab += `<text x="${X(t)}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#8b95ab">${yy}</text>`;
+    }
   }
 
   const box = document.getElementById("chart");
@@ -314,8 +487,8 @@ function drawChart(ry, gold) {
     `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" style="touch-action:none">
       ${grid}${xlab}
       <path d="${line(gold, Y2)}" fill="none" stroke="#f0c34e" stroke-width="2"/>
-      <path d="${line(ry, Y1)}" fill="none" stroke="#60a5fa" stroke-width="2.5"/>
-      ${ry.map(d => `<circle cx="${X(d.t)}" cy="${Y1(d.v)}" r="3.5" fill="#60a5fa"/>`).join("")}
+      ${hasRy ? `<path d="${line(ry, Y1)}" fill="none" stroke="#60a5fa" stroke-width="2.5"/>` : ""}
+      ${hasRy && ry.length <= 40 ? ry.map(d => `<circle cx="${X(d.t)}" cy="${Y1(d.v)}" r="3.5" fill="#60a5fa"/>`).join("") : ""}
       <line id="cross" y1="${mt}" y2="${H - mb}" stroke="#8b95ab" stroke-dasharray="3 3" visibility="hidden"/>
       <circle id="crossDot" r="4.5" fill="#f0c34e" stroke="#0f1420" stroke-width="1.5" visibility="hidden"/>
     </svg><div class="tip" id="tip"></div>`;
@@ -335,9 +508,10 @@ function drawChart(ry, gold) {
     const vx = (ev.clientX - r.left) * W / r.width;
     if (vx < ml || vx > W - mr) { hide(); return; }
     const t = x0 + (vx - ml) / (W - ml - mr) * (x1 - x0);
+    const allRy = DATA.ry;
     let gi = 0, ri = 0;
     for (let i = 1; i < gold.length; i++) if (Math.abs(gold[i].t - t) < Math.abs(gold[gi].t - t)) gi = i;
-    for (let i = 1; i < ry.length; i++) if (Math.abs(ry[i].t - t) < Math.abs(ry[ri].t - t)) ri = i;
+    for (let i = 1; i < allRy.length; i++) if (Math.abs(allRy[i].t - t) < Math.abs(allRy[ri].t - t)) ri = i;
     const g = gold[gi];
     const px = X(g.t);
     cross.setAttribute("x1", px); cross.setAttribute("x2", px);
@@ -346,8 +520,8 @@ function drawChart(ry, gold) {
     dot.setAttribute("visibility", "visible");
     const ds = new Date(g.t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
     tip.innerHTML = `<b>${ds}</b><br>` +
-      `<span class="goldc">Gold: $${g.v.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span><br>` +
-      `<span style="color:var(--accent)">US real yield: ${fmtSign(ry[ri].v)}% (${ry[ri].p})</span>`;
+      `<span class="goldc">Gold: $${g.v.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span>` +
+      (allRy.length ? `<br><span style="color:var(--accent)">US real yield: ${fmtSign(allRy[ri].v)}% (${allRy[ri].p})</span>` : "");
     tip.style.display = "block";
     const bx = ev.clientX - r.left, by = ev.clientY - r.top;
     tip.style.left = Math.min(bx + 16, r.width - 185) + "px";
@@ -470,7 +644,7 @@ function renderScorecard() {
 let lastSpot = null;
 
 async function tickLive() {
-  if (!chartState || document.hidden) return;
+  if (!DATA.gold.length || document.hidden) return;
   try {
     const [tick, spotResp] = await Promise.all([
       fetch("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT").then(r => r.json()),
@@ -480,11 +654,13 @@ async function tickLive() {
     if (!isFinite(p)) return;
 
     // move the last point of the gold line to the live price
-    const g = chartState.gold;
+    const g = DATA.gold;
     const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
     if (g[g.length - 1].t >= dayStart.getTime()) g[g.length - 1] = { t: Date.now(), v: p };
     else g.push({ t: Date.now(), v: p });
-    drawChart(chartState.ry, g);
+    // redraw only if the selected window reaches the present
+    const [, x1] = rangeBounds();
+    if (x1 >= dayStart.getTime()) applyRange();
 
     // update the headline spot with an up/down colour flash
     const el = document.getElementById("spotVal");
