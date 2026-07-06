@@ -284,7 +284,11 @@ async function loadNews(force, attempt) {
   const myTopic = topic;
   const cacheKey = "gdelt_" + myTopic;
   const cached = cacheGet(cacheKey, 55 * 1000);
-  if (cached && !cached.stale && !force) { renderNews(cached); return; }
+  if (cached && !cached.stale && !force) {
+    if (!lastNewsSuccess) lastNewsSuccess = Date.now();
+    renderNews(cached);
+    return;
+  }
 
   // GDELT asks for at most one request every 5 seconds
   const wait = Math.max(0, lastGdeltCall + 5500 - Date.now());
@@ -301,6 +305,7 @@ async function loadNews(force, attempt) {
     const data = await resp.json();
     const articles = dedupe(data.articles || []);
     cacheSet(cacheKey, articles);
+    lastNewsSuccess = Date.now();
     if (myTopic === topic) renderNews(articles);
   } catch (e) {
     if (myTopic !== topic) return;
@@ -346,12 +351,26 @@ document.querySelectorAll("#topicChips .chip").forEach(ch => {
 
 /* ---------- orchestrate ---------- */
 
+let lastNewsSuccess = null;
+let lastCycle = Date.now();
+
 (async () => {
   await Promise.all([loadCalendar(), loadNews()]);
-  document.getElementById("status").textContent =
-    `Last updated ${new Date().toLocaleString()} · headlines refresh every minute · calendar every 6 hours`;
 })();
-setInterval(() => { if (!document.hidden) loadNews(true); }, 60 * 1000);
+setInterval(() => {
+  lastCycle = Date.now();
+  if (!document.hidden) loadNews(true);
+}, 60 * 1000);
+
+// live status line: shows the last successful update and a countdown to the next check
+setInterval(() => {
+  const s = Math.max(0, 60 - Math.round((Date.now() - lastCycle) / 1000));
+  document.getElementById("status").textContent =
+    (lastNewsSuccess
+      ? `Headlines updated ${new Date(lastNewsSuccess).toLocaleTimeString()}`
+      : "Loading headlines…") +
+    ` · next check in ${s}s · calendar refreshed every 6 hours`;
+}, 1000);
 setInterval(() => { if (!document.hidden) loadCalendar(); }, 30 * 60 * 1000);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) { loadNews(); loadCalendar(); }
