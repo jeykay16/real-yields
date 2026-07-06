@@ -82,6 +82,22 @@
   .news-item a:hover { color: var(--accent); }
   .news-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
   .news-meta .ago { color: var(--warn); font-weight: 600; }
+  .impact-toggle {
+    display: inline-block; color: var(--warn); cursor: pointer; font-size: 12px;
+    font-weight: 600; margin-top: 4px; user-select: none;
+  }
+  .impact-toggle:hover { text-decoration: underline; }
+  .impact-detail {
+    font-size: 12px; line-height: 1.65; background: #1b2438;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; margin-top: 6px;
+  }
+  .impact-detail .up { color: var(--pos); }
+  .impact-detail .down { color: var(--neg); }
+  .hidden { display: none; }
+  tr.evt { cursor: pointer; }
+  tr.impact-row { border-top: none !important; }
+  tr.impact-row td { padding-top: 0; }
   .note { color: var(--muted); font-size: 12px; margin-top: 14px; line-height: 1.6; }
 </style>
 <link rel="stylesheet" href="theme.css">
@@ -113,7 +129,8 @@
   <div class="card">
     <h2>Scheduled releases &mdash; this week and next</h2>
     <div class="cap">Economic data, central-bank decisions and speeches, with market-impact ratings
-      &middot; times shown in your local timezone <span id="calUpd"></span></div>
+      &middot; times shown in your local timezone &middot; <b>click any event</b> to see its usual
+      effect on gold <span id="calUpd"></span></div>
     <div class="chips" id="impChips">
       <span class="chip" data-imp="All">All impact</span>
       <span class="chip" data-imp="Medium">Medium+</span>
@@ -249,7 +266,7 @@ function renderCalendar() {
       const time = new Date(e.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
       const fx = [e.forecast ? "fcst " + e.forecast : "", e.previous ? "prev " + e.previous : ""]
         .filter(Boolean).join(" · ");
-      html += `<tr class="${past ? "past" : ""}">
+      html += `<tr class="evt ${past ? "past" : ""}" data-title="${e.title.replace(/"/g, "&quot;")}">
         <td class="t">${time}</td>
         <td class="cur">${e.country}</td>
         <td><span class="imp ${e.impact}"></span></td>
@@ -261,6 +278,25 @@ function renderCalendar() {
   }
   document.getElementById("calBody").innerHTML = html;
 }
+
+// click a calendar event to expand its usual gold impact
+document.getElementById("calBody").addEventListener("click", ev => {
+  const tr = ev.target.closest("tr.evt");
+  if (!tr) return;
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains("impact-row")) { next.remove(); return; }
+  const i = goldImpact(tr.dataset.title);
+  const row = document.createElement("tr");
+  row.className = "impact-row";
+  row.innerHTML = `<td colspan="5"><div class="impact-detail">
+    <b>${i.tag}</b> — ${i.how}<br>
+    <span class="up">&#9650; Bullish for gold:</span> ${i.bull}<br>
+    <span class="down">&#9660; Bearish for gold:</span> ${i.bear}<br>
+    <span style="color:var(--muted)">Markets react to the gap between the released number and
+    the forecast${tr.dataset.title ? "" : ""} — an in-line result often moves nothing.</span>
+  </div></td>`;
+  tr.after(row);
+});
 
 document.querySelectorAll("#impChips .chip").forEach(ch => {
   ch.onclick = () => {
@@ -373,6 +409,7 @@ function renderNews(articles) {
       <a href="${a.url}" target="_blank" rel="noopener">${a.title}</a>
       <div class="news-meta">${ts ? `<span class="ago">${ago(ts)}</span> · ` : ""}${a.domain}` +
       `${a.sourcecountry ? " · " + a.sourcecountry : ""}</div>
+      ${impactHtml(a.title)}
     </div>`;
   }).join("");
 }
@@ -385,6 +422,73 @@ document.querySelectorAll("#topicChips .chip").forEach(ch => {
     loadNews();
   };
 });
+
+/* ---------- gold-impact knowledge base ---------- */
+
+const IMPACTS = [
+  { re: /fed\b|fomc|powell|rate cut|rate hike|interest rate|monetary policy|cash rate|bank rate|rate statement|policy minutes|press conference/i,
+    tag: "Fed & central banks",
+    how: "Central-bank policy sets real yields — gold's opportunity cost — and drives the dollar.",
+    bull: "Dovish news (cuts, pauses, hints of easing) lowers real yields and the dollar.",
+    bear: "Hawkish news (hikes, “higher for longer”) raises real yields and lifts the dollar." },
+  { re: /inflation|cpi\b|consumer price|pce\b|producer price|ppi\b|deflation/i,
+    tag: "Inflation",
+    how: "Gold reacts to inflation through what it implies for interest rates and real yields — not the number itself.",
+    bull: "Hot inflation the central bank won't fight (real yields fall), or cooling inflation that unlocks rate cuts.",
+    bear: "Hot inflation that forces aggressive hikes, pushing real yields up." },
+  { re: /jobs|payroll|employment|unemployment|gdp\b|recession|pmi\b|ism\b|retail sales|consumer confidence|manufacturing|industrial|housing|sentiment|trade balance/i,
+    tag: "Growth & data",
+    how: "Growth data steers rate expectations: weak data brings cuts closer, strong data delays them.",
+    bull: "Weak prints (rising unemployment, sub-50 PMI, GDP misses) → cuts closer, yields down.",
+    bear: "Strong prints → higher-for-longer rates and a firmer dollar." },
+  { re: /tariff|trade war|trade deal|trade talks|import dut|export ban/i,
+    tag: "Trade & tariffs",
+    how: "Tariffs are inflationary and growth-damaging at once, and raise policy uncertainty — a stagflation cocktail.",
+    bull: "Escalation → uncertainty and safe-haven demand; historically gold has risen on tariff shocks.",
+    bear: "De-escalation and deals → risk-on mood, hedges unwound." },
+  { re: /war\b|missile|airstrike|strike|sanction|ceasefire|invasion|conflict|military|troops|nuclear|geopolit/i,
+    tag: "Geopolitics",
+    how: "Gold is the classic safe haven — no government or bank can default on it.",
+    bull: "Escalation or a new conflict → an immediate safe-haven bid (fast, but fades if tension eases).",
+    bear: "Ceasefires and de-escalation → the fear premium unwinds." },
+  { re: /bank collapse|bank failure|banking|bailout|liquidity|credit|default|contagion/i,
+    tag: "Banks & credit",
+    how: "Banking stress triggers both flight-to-safety and bets on emergency rate cuts — a double tailwind.",
+    bull: "Failures and stress → strongly gold-positive (March 2023 is the textbook case).",
+    bear: "Stress resolving or bailouts calming nerves → the haven bid fades." },
+  { re: /dollar|treasur|bond|yield/i,
+    tag: "Dollar & bonds",
+    how: "Gold is priced in dollars and competes with bonds for safe-asset money.",
+    bull: "A falling dollar or falling yields make gold cheaper worldwide and lower its opportunity cost.",
+    bear: "Dollar strength, or a bond selloff that lifts real yields." },
+  { re: /gold|bullion|silver|precious/i,
+    tag: "Gold market",
+    how: "Direct gold-market news: flows, central-bank reserves, bank forecasts.",
+    bull: "Central-bank buying, ETF inflows, upgraded price targets.",
+    bear: "ETF outflows, profit-taking, exchange margin hikes." },
+];
+const DEFAULT_IMPACT = {
+  tag: "General macro",
+  how: "Most macro news reaches gold through three channels: real yields, the US dollar, and fear.",
+  bull: "Anything that lowers real yields, weakens the dollar, or raises uncertainty.",
+  bear: "Anything that lifts real yields or strengthens the dollar.",
+};
+function goldImpact(text) {
+  for (const i of IMPACTS) if (i.re.test(text || "")) return i;
+  return DEFAULT_IMPACT;
+}
+function impactHtml(text) {
+  const i = goldImpact(text);
+  return `<span class="impact-toggle" onclick="toggleImpact(this)">&#9656; Gold impact — ${i.tag}</span>
+    <div class="impact-detail hidden">${i.how}<br>
+    <span class="up">&#9650; Bullish for gold:</span> ${i.bull}<br>
+    <span class="down">&#9660; Bearish for gold:</span> ${i.bear}</div>`;
+}
+function toggleImpact(el) {
+  const d = el.nextElementSibling;
+  const open = d.classList.toggle("hidden");
+  el.innerHTML = el.innerHTML.replace(open ? "▾" : "▸", open ? "▸" : "▾");
+}
 
 /* ---------- market focus (dominant themes + most-syndicated headlines) ---------- */
 
@@ -416,11 +520,18 @@ function computeFocus() {
     if (!groups[key]) groups[key] = { article: a, outlets: new Set() };
     groups[key].outlets.add(a.domain);
   }
-  const major = Object.values(groups)
+  let major = Object.values(groups)
     .map(g => ({ ...g.article, n: g.outlets.size }))
     .filter(g => g.n >= 2)
     .sort((a, b) => b.n - a.n)
-    .slice(0, 6);
+    .slice(0, 7);
+  // if syndication data is thin, fall back to the freshest stories so the
+  // section always shows actual headlines
+  if (major.length < 4) {
+    const seen = new Set(major.map(m => m.url));
+    major = major.concat(Object.values(groups).map(g => ({ ...g.article, n: g.outlets.size }))
+      .filter(a => !seen.has(a.url)).slice(0, 7 - major.length));
+  }
 
   // theme volume over unique stories
   const uniqueTitles = Object.values(groups).map(g => g.article.title || "");
@@ -440,15 +551,20 @@ function computeFocus() {
     </div>`).join("");
 
   const majorHtml = major.length ? `
-    <div style="margin-top:14px;font-size:13px;font-weight:700;color:var(--muted);
-      text-transform:uppercase;letter-spacing:.04em">Most widely covered</div>` +
+    <div style="font-size:13px;font-weight:700;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.04em">Top stories driving sentiment</div>` +
     major.map(a => `
       <div class="news-item">
         <a href="${a.url}" target="_blank" rel="noopener">${a.title}</a>
-        <div class="news-meta"><span class="ago">${a.n} outlets</span> · first seen via ${a.domain}</div>
+        <div class="news-meta">${a.n > 1 ? `<span class="ago">picked up by ${a.n} outlets</span> · ` : ""}via ${a.domain}</div>
+        ${impactHtml(a.title)}
       </div>`).join("") : "";
 
-  document.getElementById("focusBody").innerHTML = themesHtml + majorHtml ||
+  const themesBlock = themesHtml ? `
+    <div style="margin-top:16px;font-size:13px;font-weight:700;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.04em">Theme volume (unique stories, last 48h)</div>` + themesHtml : "";
+
+  document.getElementById("focusBody").innerHTML = (majorHtml + themesBlock) ||
     `<div class="loading-msg">Not enough coverage data yet.</div>`;
 }
 
