@@ -14,17 +14,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch weekly calendar feed
+      - name: Fetch calendar feeds (this week + next week)
         run: |
           mkdir -p data
           curl -sf --max-time 60 --retry 3 --retry-delay 30 \
             -A "real-yields-dashboard/1.0 (github.com/jeykay16/real-yields)" \
-            "https://nfs.faireconomy.media/ff_calendar_thisweek.json" -o /tmp/feed.json
-          python3 -c "import json; json.load(open('/tmp/feed.json'))"   # validate JSON
+            "https://nfs.faireconomy.media/ff_calendar_thisweek.json" -o /tmp/w1.json
+          sleep 10
+          curl -sf --max-time 60 --retry 3 --retry-delay 30 \
+            -A "real-yields-dashboard/1.0 (github.com/jeykay16/real-yields)" \
+            "https://nfs.faireconomy.media/ff_calendar_nextweek.json" -o /tmp/w2.json || true
           python3 - <<'EOF'
-          import json, datetime
-          events = json.load(open("/tmp/feed.json"))
-          out = {"updated": datetime.datetime.now(datetime.timezone.utc).isoformat(), "events": events}
+          import json, datetime, os
+          events = json.load(open("/tmp/w1.json"))
+          if os.path.exists("/tmp/w2.json"):
+              try:
+                  events += json.load(open("/tmp/w2.json"))
+              except Exception:
+                  pass
+          seen, merged = set(), []
+          for e in events:
+              key = (e.get("title"), e.get("country"), e.get("date"))
+              if key not in seen:
+                  seen.add(key)
+                  merged.append(e)
+          out = {"updated": datetime.datetime.now(datetime.timezone.utc).isoformat(), "events": merged}
           json.dump(out, open("data/calendar.json", "w"))
           EOF
 

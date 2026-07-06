@@ -18,7 +18,12 @@ gold (XAU/USD) signal and a central-bank rate-meetings calendar.
 - **Gold drivers** (`gold.html`) — the three forces that move XAU/USD, measured
   live: a real-yield vs gold-price chart with correlation, a DXY-weighted dollar
   index proxy, and CFTC managed-money positioning with a 3-year percentile, all
-  combined into an overall scorecard.
+  combined into an overall scorecard. The chart is interactive (hover crosshair,
+  preset and custom time ranges, gold history to 1992, live 15-second pricing).
+- **News** (`news.html`) — a two-week economic calendar with impact ratings
+  (regenerated every 6 hours by a scheduled GitHub Action), live market-moving
+  headlines from the GDELT news index across eight topic filters (refreshed
+  every minute), and embedded X market-news accounts.
 
 ## How it works
 

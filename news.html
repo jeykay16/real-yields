@@ -99,7 +99,7 @@
 
   <!-- economic calendar -->
   <div class="card">
-    <h2>This week's scheduled releases</h2>
+    <h2>Scheduled releases &mdash; this week and next</h2>
     <div class="cap">Economic data, central-bank decisions and speeches, with market-impact ratings
       &middot; times shown in your local timezone <span id="calUpd"></span></div>
     <div class="chips" id="impChips">
@@ -120,17 +120,32 @@
       <span class="chip on" data-q="all">All</span>
       <span class="chip" data-q="fed">Fed &amp; rates</span>
       <span class="chip" data-q="data">Inflation &amp; data</span>
-      <span class="chip" data-q="politics">White House &amp; tariffs</span>
-      <span class="chip" data-q="geo">Geopolitics</span>
-      <span class="chip" data-q="gold">Gold</span>
+      <span class="chip" data-q="politics">White House &amp; politics</span>
+      <span class="chip" data-q="geo">Geopolitics &amp; energy</span>
+      <span class="chip" data-q="banks">Banks &amp; crises</span>
+      <span class="chip" data-q="usd">Dollar &amp; bonds</span>
+      <span class="chip" data-q="gold">Gold &amp; flows</span>
     </div>
     <div id="newsBody"><div class="loading-msg">Loading headlines&hellip;</div></div>
   </div>
 
+  <!-- X market accounts -->
+  <div class="card">
+    <h2>Market voices on X</h2>
+    <div class="cap">Accounts known for fast market headlines and market-moving quotes &middot;
+      pick an account to view its latest posts</div>
+    <div class="chips" id="xChips"></div>
+    <div id="xEmbed" style="min-height:120px"></div>
+    <div class="cap" style="margin-top:10px">
+      Direct links (always work, even if the embed above is blocked by X or an ad-blocker):
+      <span id="xLinks"></span>
+    </div>
+  </div>
+
   <div class="note">
-    Calendar: weekly feed of scheduled economic events (impact ratings as published by the feed;
-    red = high impact, amber = medium), regenerated automatically every six hours by a scheduled
-    workflow. Headlines: GDELT project index of worldwide online news
+    Calendar: scheduled economic events for the current and following week (impact ratings as
+    published by the feed; red = high impact, amber = medium), regenerated automatically every six
+    hours by a scheduled workflow. Headlines: GDELT project index of worldwide online news
     &mdash; new stories typically appear within about 15 minutes of publication and the list
     checks for them every minute while the page is open. Headlines link directly to
     the original source; coverage and accuracy are the source's responsibility. Nothing here is
@@ -257,12 +272,14 @@ document.querySelectorAll("#curChips .chip").forEach(ch => {
 /* ---------- live headlines (GDELT) ---------- */
 
 const TOPICS = {
-  all: '("federal reserve" OR inflation OR tariff OR "gold price" OR "jobs report" OR "interest rates" OR sanctions)',
-  fed: '("federal reserve" OR FOMC OR "jerome powell" OR "interest rate decision" OR "rate cut" OR "rate hike")',
-  data: '(inflation OR "consumer price index" OR "jobs report" OR "nonfarm payrolls" OR unemployment OR GDP OR PMI OR "retail sales")',
-  politics: '("white house" OR "president trump" OR tariff OR tariffs OR "trade deal" OR "executive order")',
-  geo: '(geopolitical OR sanctions OR missile OR airstrike OR ceasefire OR "military conflict" OR escalation)',
-  gold: '("gold price" OR "gold prices" OR bullion OR "gold rally" OR "gold market" OR "safe haven")',
+  all: '("federal reserve" OR inflation OR tariffs OR "gold price" OR "jobs report" OR "interest rates" OR sanctions OR "banking crisis" OR "treasury yields" OR "safe haven" OR "government shutdown" OR escalation)',
+  fed: '("federal reserve" OR FOMC OR "jerome powell" OR "interest rate decision" OR "rate cut" OR "rate hike" OR "monetary policy" OR "quantitative easing" OR "quantitative tightening")',
+  data: '(inflation OR "consumer price index" OR "jobs report" OR "nonfarm payrolls" OR unemployment OR GDP OR PMI OR "retail sales" OR "PCE index" OR "consumer confidence" OR "ISM manufacturing" OR "producer price")',
+  politics: '("white house" OR "president trump" OR tariff OR tariffs OR "trade deal" OR "executive order" OR "government shutdown" OR "debt ceiling" OR "election result" OR impeachment)',
+  geo: '(geopolitical OR sanctions OR missile OR airstrike OR ceasefire OR "military conflict" OR escalation OR invasion OR "oil price" OR OPEC OR "strait of hormuz" OR "nuclear talks")',
+  banks: '("bank failure" OR "bank collapse" OR "banking crisis" OR bailout OR "credit crunch" OR "financial stability" OR "liquidity crisis" OR "sovereign default" OR contagion OR "emergency lending")',
+  usd: '("treasury yields" OR "bond selloff" OR "dollar index" OR "dollar strength" OR "dollar weakness" OR "currency intervention" OR devaluation OR "reserve currency" OR de-dollarization)',
+  gold: '("gold price" OR "gold prices" OR bullion OR "gold rally" OR "gold market" OR "safe haven" OR "gold reserves" OR "central bank gold" OR "gold ETF" OR "gold demand" OR "silver price")',
 };
 let topic = "all";
 let lastGdeltCall = 0;
@@ -309,7 +326,11 @@ async function loadNews(force, attempt) {
     if (myTopic === topic) renderNews(articles);
   } catch (e) {
     if (myTopic !== topic) return;
-    if (cached) { renderNews(cached.stale ? cached.data : cached); return; }
+    if (cached) {
+      if (cached.stale && cached.t) lastNewsSuccess = cached.t; // show the cache's real age
+      renderNews(cached.stale ? cached.data : cached);
+      return;
+    }
     // the service throttles bursts — retry a couple of times before giving up
     if ((attempt || 0) < 2) {
       document.getElementById("newsBody").innerHTML =
@@ -328,7 +349,7 @@ function renderNews(articles) {
       `<div class="loading-msg">No recent stories found for this topic.</div>`;
     return;
   }
-  document.getElementById("newsBody").innerHTML = articles.slice(0, 25).map(a => {
+  document.getElementById("newsBody").innerHTML = articles.slice(0, 35).map(a => {
     // seendate format: 20260706T121500Z
     const m = (a.seendate || "").match(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/);
     const ts = m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null;
@@ -348,6 +369,62 @@ document.querySelectorAll("#topicChips .chip").forEach(ch => {
     loadNews();
   };
 });
+
+/* ---------- X market accounts ---------- */
+
+const X_ACCOUNTS = [
+  ["DeItaone",      "Walter Bloomberg — headline squawk"],
+  ["FirstSquawk",   "First Squawk — breaking market news"],
+  ["financialjuice","Financial Juice — live news feed"],
+  ["unusual_whales","Unusual Whales — markets & flow"],
+  ["KobeissiLetter","Kobeissi Letter — macro commentary"],
+  ["zerohedge",     "ZeroHedge — markets & macro"],
+  ["ForexLive",     "ForexLive — FX & macro headlines"],
+];
+let xAccount = localStorage.getItem("xAccount") || X_ACCOUNTS[0][0];
+let twttrLoaded = false;
+
+function renderXEmbed() {
+  const box = document.getElementById("xEmbed");
+  box.innerHTML = `<a class="twitter-timeline" data-theme="dark" data-dnt="true" data-height="600"
+    href="https://twitter.com/${xAccount}">Loading posts by @${xAccount}&hellip; (if this never loads,
+    X is blocking anonymous embeds — use the direct links below)</a>`;
+  if (!twttrLoaded) {
+    twttrLoaded = true;
+    const s = document.createElement("script");
+    s.src = "https://platform.twitter.com/widgets.js";
+    s.async = true;
+    document.body.appendChild(s);
+  } else if (window.twttr && window.twttr.widgets) {
+    window.twttr.widgets.load(box);
+  }
+  // X frequently refuses to render timelines for visitors who aren't logged in —
+  // if the embed stays empty, say so instead of showing a blank box
+  clearTimeout(renderXEmbed._t);
+  renderXEmbed._t = setTimeout(() => {
+    const f = box.querySelector("iframe");
+    if (!f || f.getBoundingClientRect().height < 50) {
+      box.innerHTML = `<div class="loading-msg">X is not allowing embedded timelines in this
+        browser (it usually requires being logged in to X, and some ad-blockers block the widget).
+        Use the direct links below &mdash; they open the account's live feed on X.</div>`;
+    }
+  }, 9000);
+}
+
+document.getElementById("xChips").innerHTML = X_ACCOUNTS.map(([h, d]) =>
+  `<span class="chip ${h === xAccount ? "on" : ""}" data-x="${h}" title="${d}">@${h}</span>`).join("");
+document.querySelectorAll("#xChips .chip").forEach(ch => {
+  ch.onclick = () => {
+    xAccount = ch.dataset.x;
+    localStorage.setItem("xAccount", xAccount);
+    document.querySelectorAll("#xChips .chip").forEach(c => c.classList.toggle("on", c === ch));
+    renderXEmbed();
+  };
+});
+document.getElementById("xLinks").innerHTML = X_ACCOUNTS.map(([h, d]) =>
+  `<a href="https://x.com/${h}" target="_blank" rel="noopener" title="${d}"
+    style="color:var(--accent)">@${h}</a>`).join(" · ");
+renderXEmbed();
 
 /* ---------- orchestrate ---------- */
 
@@ -375,6 +452,7 @@ setInterval(() => { if (!document.hidden) loadCalendar(); }, 30 * 60 * 1000);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) { loadNews(); loadCalendar(); }
 });
+setInterval(() => { if (!document.hidden) renderXEmbed(); }, 5 * 60 * 1000); // X embed re-render
 </script>
 </body>
 </html>
