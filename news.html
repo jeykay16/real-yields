@@ -280,18 +280,20 @@ function dedupe(articles) {
   return out;
 }
 
-async function loadNews(force) {
-  const cacheKey = "gdelt_" + topic;
+async function loadNews(force, attempt) {
+  const myTopic = topic;
+  const cacheKey = "gdelt_" + myTopic;
   const cached = cacheGet(cacheKey, 5 * 60 * 1000);
   if (cached && !cached.stale && !force) { renderNews(cached); return; }
 
   // GDELT asks for at most one request every 5 seconds
   const wait = Math.max(0, lastGdeltCall + 5500 - Date.now());
   if (wait) await new Promise(r => setTimeout(r, wait));
+  if (myTopic !== topic) return; // user switched topic while we waited
   lastGdeltCall = Date.now();
 
   try {
-    const q = encodeURIComponent(TOPICS[topic] + " sourcelang:eng");
+    const q = encodeURIComponent(TOPICS[myTopic] + " sourcelang:eng");
     const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${q}` +
       `&mode=artlist&maxrecords=50&format=json&sort=datedesc&timespan=2d`;
     const resp = await fetch(url);
@@ -299,11 +301,19 @@ async function loadNews(force) {
     const data = await resp.json();
     const articles = dedupe(data.articles || []);
     cacheSet(cacheKey, articles);
-    renderNews(articles);
+    if (myTopic === topic) renderNews(articles);
   } catch (e) {
+    if (myTopic !== topic) return;
     if (cached) { renderNews(cached.stale ? cached.data : cached); return; }
-    document.getElementById("newsBody").innerHTML =
-      `<div class="err">Could not load headlines (${e.message}) — will retry automatically.</div>`;
+    // the service throttles bursts — retry a couple of times before giving up
+    if ((attempt || 0) < 2) {
+      document.getElementById("newsBody").innerHTML =
+        `<div class="loading-msg">News service is busy — retrying in a few seconds&hellip;</div>`;
+      setTimeout(() => { if (myTopic === topic) loadNews(true, (attempt || 0) + 1); }, 8000);
+    } else {
+      document.getElementById("newsBody").innerHTML =
+        `<div class="err">Could not load headlines (${e.message}) — it will retry on the next 5-minute cycle.</div>`;
+    }
   }
 }
 
