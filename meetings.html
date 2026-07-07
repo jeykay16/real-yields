@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪙</text></svg>">
 <title>Central Bank Rate Meetings</title>
 <link rel="preconnect" href="https://stats.bis.org">
 <style>
@@ -197,45 +198,63 @@ async function load() {
   const status = document.getElementById("status");
   const errBox = document.getElementById("error");
   try {
-    const start = new Date();
-    start.setMonth(start.getMonth() - 14);
-    const startStr = start.toISOString().slice(0, 10);
-    const areas = Object.values(BANKS).map(b => "D." + b[0]).join(",");
-    const url = `https://stats.bis.org/api/v2/data/dataflow/BIS/WS_CBPOL/1.0/${areas}` +
-      `?format=csv&startPeriod=${startStr}`;
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`BIS API returned HTTP ${resp.status}`);
-    const grid = parseCsv(await resp.text());
-    const header = grid[0];
-    const iArea = header.indexOf("REF_AREA");
-    const iDate = header.indexOf("TIME_PERIOD");
-    const iVal = header.indexOf("OBS_VALUE");
+    // fast path: pre-built data file with each bank's rate already reduced
+    let info = null;
+    try {
+      const r = await fetch("data/market.json", { cache: "no-cache" });
+      if (r.ok) {
+        const S = await r.json();
+        if (S.cbRates && Date.now() - new Date(S.updated).getTime() < 48 * 3600 * 1000) {
+          info = S.cbRates;
+        }
+      }
+    } catch (e) { /* fall through to the BIS API */ }
 
-    // area -> sorted [date, value] series
-    const series = {};
-    for (const row of grid.slice(1)) {
-      const v = parseFloat(row[iVal]);
-      if (!isFinite(v)) continue;
-      (series[row[iArea]] = series[row[iArea]] || []).push([row[iDate], v]);
+    if (!info) {
+      const start = new Date();
+      start.setMonth(start.getMonth() - 14);
+      const startStr = start.toISOString().slice(0, 10);
+      const areas = Object.values(BANKS).map(b => "D." + b[0]).join(",");
+      const url = `https://stats.bis.org/api/v2/data/dataflow/BIS/WS_CBPOL/1.0/${areas}` +
+        `?format=csv&startPeriod=${startStr}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`BIS API returned HTTP ${resp.status}`);
+      const grid = parseCsv(await resp.text());
+      const header = grid[0];
+      const iArea = header.indexOf("REF_AREA");
+      const iDate = header.indexOf("TIME_PERIOD");
+      const iVal = header.indexOf("OBS_VALUE");
+      const series = {};
+      for (const row of grid.slice(1)) {
+        const v = parseFloat(row[iVal]);
+        if (!isFinite(v)) continue;
+        (series[row[iArea]] = series[row[iArea]] || []).push([row[iDate], v]);
+      }
+      const target = new Date(); target.setFullYear(target.getFullYear() - 1);
+      const targetIso = target.toISOString().slice(0, 10);
+      info = {};
+      for (const a in series) {
+        const s = series[a].sort((x, y) => x[0] < y[0] ? -1 : 1);
+        let change = null;
+        for (let i = 1; i < s.length; i++) {
+          if (s[i][1] !== s[i - 1][1]) change = { date: s[i][0], from: s[i - 1][1], to: s[i][1] };
+        }
+        let ya = s[0];
+        for (const obs of s) { if (obs[0] <= targetIso) ya = obs; else break; }
+        info[a] = { rate: s[s.length - 1][1], date: s[s.length - 1][0], change, yearAgo: ya[1] };
+      }
     }
-    for (const a in series) series[a].sort((x, y) => x[0] < y[0] ? -1 : 1);
 
     const todayIso = new Date().toISOString().slice(0, 10);
     const soonIso = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
 
     const html = Object.entries(BANKS).map(([ccy, [area, bank, link, dates]]) => {
-      const s = series[area];
+      const d = info[area];
       let rateCell = `<span class="muted">n/a</span>`, changeCell = `<span class="muted">n/a</span>`,
           moveCell = `<span class="muted">n/a</span>`, stanceCell = "";
-      if (s && s.length) {
-        const [lastDate, lastVal] = s[s.length - 1];
-        rateCell = `<span class="rate">${lastVal.toFixed(2)}%</span> <span class="period">${fmtDate(lastDate)}</span>`;
-
-        // last change within the fetched window
-        let change = null;
-        for (let i = 1; i < s.length; i++) {
-          if (s[i][1] !== s[i - 1][1]) change = { date: s[i][0], from: s[i - 1][1], to: s[i][1] };
-        }
+      if (d) {
+        rateCell = `<span class="rate">${d.rate.toFixed(2)}%</span> <span class="period">${fmtDate(d.date)}</span>`;
+        const change = d.change;
         if (change) {
           const cut = change.to < change.from;
           changeCell = `<span class="${cut ? "pos" : "neg"}">${cut ? "Cut" : "Hiked"} ` +
@@ -245,16 +264,11 @@ async function load() {
           changeCell = `<span class="muted">no change in past 14 months</span>`;
         }
 
-        // net move vs ~12 months ago
-        const target = new Date(); target.setFullYear(target.getFullYear() - 1);
-        const targetIso = target.toISOString().slice(0, 10);
-        let yearAgo = s[0];
-        for (const obs of s) { if (obs[0] <= targetIso) yearAgo = obs; else break; }
-        const net = lastVal - yearAgo[1];
+        const net = d.rate - d.yearAgo;
         moveCell = net === 0 ? `<span class="muted">unchanged</span>` :
           `<span class="${net < 0 ? "pos" : "neg"}">${bp(net)}</span>`;
 
-        // stance: last move within 8 months = easing/tightening, else on hold
+        // stance: last move within 8 months = cutting/hiking, else on hold
         const eightMo = new Date(); eightMo.setMonth(eightMo.getMonth() - 8);
         const active = change && change.date >= eightMo.toISOString().slice(0, 10);
         stanceCell = !active ? `<span class="stance hold">ON HOLD</span>` :

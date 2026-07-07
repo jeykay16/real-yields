@@ -2,23 +2,38 @@
 
 body {
   background:
-    radial-gradient(1100px 700px at 85% -10%, rgba(78, 110, 190, 0.16), transparent 60%),
-    radial-gradient(900px 600px at -10% 110%, rgba(240, 195, 78, 0.05), transparent 55%),
-    #0f1420;
+    radial-gradient(1100px 700px at 85% -10%, rgba(78, 110, 190, 0.18), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgba(240, 195, 78, 0.06), transparent 55%),
+    linear-gradient(180deg, #0d1119 0%, #0f1420 100%);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-h1 { letter-spacing: -0.4px; }
-
-.card {
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
-  transition: border-color 0.18s ease;
+h1 {
+  letter-spacing: -0.5px;
+  background: linear-gradient(92deg, #f2f5fb 20%, #9db6e4 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
-.card:hover { border-color: #35456f; }
+.sub { margin-top: 2px; }
 
-.nav { border-bottom: 1px solid #263048; padding-bottom: 10px; }
+/* sticky glass navigation */
+.nav {
+  position: sticky;
+  top: 10px;
+  z-index: 40;
+  background: rgba(20, 27, 44, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid #263048;
+  border-radius: 999px;
+  padding: 10px 20px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  width: fit-content;
+  border-bottom: 1px solid #263048;
+}
 .nav a { position: relative; }
 .nav a:hover { text-decoration: none; color: #8fc0ff; }
 .nav a::after {
@@ -28,14 +43,43 @@ h1 { letter-spacing: -0.4px; }
 .nav a:hover::after { width: 100%; }
 .nav .here { border-bottom: 2px solid #60a5fa; padding-bottom: 2px; }
 
-.chip, .rchip, button { transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+/* cards */
+.card {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.30);
+  transition: border-color 0.18s ease, transform 0.18s ease;
+  border-radius: 14px !important;
+}
+.card:hover { border-color: #3a4c7e; }
+
+/* numbers align like a terminal */
+td, .stat .v, .gold-stat .v, .rate, .fx {
+  font-variant-numeric: tabular-nums;
+}
+
+/* chips */
+.chip:hover, .rchip:hover { transform: translateY(-1px); }
+.chip, .rchip, button { transition: background 0.15s ease, border-color 0.15s ease,
+  color 0.15s ease, transform 0.15s ease; }
+button { border-radius: 10px; }
+
+/* tables */
+tbody tr { transition: background 0.12s ease; }
+thead th { position: sticky; top: 0; }
+
+/* news list */
+.news-item { transition: background 0.12s ease, padding-left 0.12s ease; border-radius: 6px; }
+.news-item:hover { background: rgba(96, 165, 250, 0.06); padding-left: 8px; }
+
+/* status line */
+.status { font-variant-numeric: tabular-nums; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: #0f1420; }
 ::-webkit-scrollbar-thumb { background: #263048; border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: #3a4d7d; }
+* { scrollbar-color: #263048 #0f1420; }
 
-tbody tr { transition: background 0.12s ease; }
+::selection { background: rgba(96, 165, 250, 0.35); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::after { transition: none !important; }

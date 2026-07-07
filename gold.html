@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪙</text></svg>">
 <title>Gold Drivers — XAU/USD</title>
 <link rel="preconnect" href="https://sdmx.oecd.org">
 <link rel="preconnect" href="https://api.binance.com">
@@ -199,6 +200,22 @@
 <script>
 const OECD = "https://sdmx.oecd.org/public/rest/data";
 const fmtSign = v => (v >= 0 ? "+" : "") + v.toFixed(2);
+
+// pre-built data file (regenerated server-side every few hours) — sections are
+// used when present; any missing section falls back to querying the API live
+let STATIC = null;
+async function loadStaticData() {
+  try {
+    const r = await fetch("data/market.json", { cache: "no-cache" });
+    if (!r.ok) return;
+    const S = await r.json();
+    if (Date.now() - new Date(S.updated).getTime() < 48 * 3600 * 1000) STATIC = S;
+  } catch (e) {}
+}
+const monthTs = p => {
+  const [yy, mm] = p.split("-").map(Number);
+  return new Date(yy, mm - 1, 15).getTime();
+};
 const badge = (el, text, cls) => {
   const e = document.getElementById(el);
   e.textContent = text; e.className = "badge " + cls;
@@ -302,23 +319,30 @@ async function loadRealYieldPanel() {
     }
   } catch (e) {}
 
-  const [yRows, cRows, binance, imfGold, spotResp] = await Promise.all([
-    fetchOecd(`${OECD}/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/USA.M.IRLT.PA.....?startPeriod=1989-01&format=csvfile`),
-    fetchOecd(`${OECD}/OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0/USA.M.N.CPI.PA._T.N.GY?startPeriod=1989-01&format=csvfile`),
+  const useStaticRy = STATIC && STATIC.usRealYield && STATIC.usRealYield.length;
+  const useStaticImf = STATIC && STATIC.imfGold && STATIC.imfGold.length;
+  const [yRows, cRows, binance, imfFetched, spotResp] = await Promise.all([
+    useStaticRy ? [] : fetchOecd(`${OECD}/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/USA.M.IRLT.PA.....?startPeriod=1989-01&format=csvfile`),
+    useStaticRy ? [] : fetchOecd(`${OECD}/OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0/USA.M.N.CPI.PA._T.N.GY?startPeriod=1989-01&format=csvfile`),
     fetchBinanceAll(),
-    fetchImfGoldMonthly().catch(() => []),
+    useStaticImf ? [] : fetchImfGoldMonthly().catch(() => []),
     fetch("https://api.gold-api.com/price/XAU").then(r => r.ok ? r.json() : null).catch(() => null),
   ]);
+  const imfGold = useStaticImf
+    ? STATIC.imfGold.map(g => ({ t: monthTs(g.p), v: g.v, p: g.p }))
+    : imfFetched;
 
   // monthly matched real-yield series, 1989 -> now
-  const y = {}, c = {};
-  for (const r of yRows) if (r.FREQ === "M") y[r.TIME_PERIOD] = parseFloat(r.OBS_VALUE);
-  for (const r of cRows) if (r.FREQ === "M") c[r.TIME_PERIOD] = parseFloat(r.OBS_VALUE);
-  const months = Object.keys(y).filter(p => p in c).sort();
-  const ry = months.map(p => {
-    const [yy, mm] = p.split("-").map(Number);
-    return { t: new Date(yy, mm - 1, 15).getTime(), v: y[p] - c[p], p };
-  });
+  let ry;
+  if (useStaticRy) {
+    ry = STATIC.usRealYield.map(r => ({ t: monthTs(r.p), v: r.v, p: r.p }));
+  } else {
+    const y = {}, c = {};
+    for (const r of yRows) if (r.FREQ === "M") y[r.TIME_PERIOD] = parseFloat(r.OBS_VALUE);
+    for (const r of cRows) if (r.FREQ === "M") c[r.TIME_PERIOD] = parseFloat(r.OBS_VALUE);
+    const months = Object.keys(y).filter(p => p in c).sort();
+    ry = months.map(p => ({ t: monthTs(p), v: y[p] - c[p], p }));
+  }
   if (!ry.length) throw new Error("no matched real-yield months");
 
   if (!binance.length) throw new Error("no gold price data");
@@ -680,21 +704,25 @@ function attachChartControls() {
 /* ---------- panel 2: dollar index proxy ---------- */
 
 async function loadDollarPanel() {
-  const WEIGHTS = { EUR: 0.576, JPY: 0.136, GBP: 0.119, CAD: 0.091, SEK: 0.042, CHF: 0.036 };
-  const start = new Date(); start.setMonth(start.getMonth() - 13);
-  const url = `https://api.frankfurter.dev/v1/${start.toISOString().slice(0, 10)}..` +
-    `?base=USD&symbols=${Object.keys(WEIGHTS).join(",")}`;
-  const data = await (await fetch(url)).json();
-  const dates = Object.keys(data.rates).sort();
-  if (dates.length < 30) throw new Error("not enough FX history");
-
-  // geometric DXY-weight index, first day = 100
-  const first = data.rates[dates[0]];
-  const idx = dates.map(d => {
-    let v = 1;
-    for (const [ccy, w] of Object.entries(WEIGHTS)) v *= Math.pow(data.rates[d][ccy] / first[ccy], w);
-    return { d, v: v * 100 };
-  });
+  let idx;
+  if (STATIC && STATIC.dollarIndex && STATIC.dollarIndex.length > 30) {
+    idx = STATIC.dollarIndex;
+  } else {
+    const WEIGHTS = { EUR: 0.576, JPY: 0.136, GBP: 0.119, CAD: 0.091, SEK: 0.042, CHF: 0.036 };
+    const start = new Date(); start.setMonth(start.getMonth() - 13);
+    const url = `https://api.frankfurter.dev/v1/${start.toISOString().slice(0, 10)}..` +
+      `?base=USD&symbols=${Object.keys(WEIGHTS).join(",")}`;
+    const data = await (await fetch(url)).json();
+    const dates = Object.keys(data.rates).sort();
+    if (dates.length < 30) throw new Error("not enough FX history");
+    const first = data.rates[dates[0]];
+    idx = dates.map(d => {
+      let v = 1;
+      for (const [ccy, w] of Object.entries(WEIGHTS)) v *= Math.pow(data.rates[d][ccy] / first[ccy], w);
+      return { d, v: v * 100 };
+    });
+  }
+  const dates = idx.map(x => x.d);
   const last = idx[idx.length - 1];
   const back = n => idx[Math.max(0, idx.length - 1 - n)].v;
   const m1 = (last.v / back(21) - 1) * 100;
@@ -724,16 +752,21 @@ async function loadDollarPanel() {
 /* ---------- panel 3: CFTC positioning ---------- */
 
 async function loadCotPanel() {
-  const url = "https://publicreporting.cftc.gov/resource/72hh-3qpy.json" +
-    "?cftc_contract_market_code=088691" +
-    "&$select=report_date_as_yyyy_mm_dd,m_money_positions_long_all,m_money_positions_short_all" +
-    "&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=160";
-  const rows = await (await fetch(url)).json();
-  if (!rows.length) throw new Error("no CFTC rows");
-  const hist = rows.map(r => ({
-    d: r.report_date_as_yyyy_mm_dd.slice(0, 10),
-    net: parseInt(r.m_money_positions_long_all) - parseInt(r.m_money_positions_short_all),
-  })).reverse();
+  let hist;
+  if (STATIC && STATIC.cot && STATIC.cot.length) {
+    hist = STATIC.cot;
+  } else {
+    const url = "https://publicreporting.cftc.gov/resource/72hh-3qpy.json" +
+      "?cftc_contract_market_code=088691" +
+      "&$select=report_date_as_yyyy_mm_dd,m_money_positions_long_all,m_money_positions_short_all" +
+      "&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=160";
+    const rows = await (await fetch(url)).json();
+    if (!rows.length) throw new Error("no CFTC rows");
+    hist = rows.map(r => ({
+      d: r.report_date_as_yyyy_mm_dd.slice(0, 10),
+      net: parseInt(r.m_money_positions_long_all) - parseInt(r.m_money_positions_short_all),
+    })).reverse();
+  }
 
   const now = hist[hist.length - 1];
   const prev = hist[Math.max(0, hist.length - 2)];
@@ -826,6 +859,7 @@ async function tickLive() {
 /* ---------- orchestrate ---------- */
 
 async function loadAll() {
+  await loadStaticData();
   const jobs = [
     loadRealYieldPanel().catch(e => {
       document.getElementById("ryStats").innerHTML = "";

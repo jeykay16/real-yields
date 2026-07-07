@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪙</text></svg>">
 <title>Market News &amp; Economic Calendar</title>
 <link rel="preconnect" href="https://api.gdeltproject.org">
 <link rel="preconnect" href="https://platform.twitter.com">
@@ -125,6 +126,15 @@
     <div id="focusBody"><div class="loading-msg">Analysing coverage&hellip;</div></div>
   </div>
 
+  <!-- live squawk -->
+  <div class="card">
+    <h2>Live squawk &mdash; the fast X accounts, mirrored</h2>
+    <div class="cap">Walter Bloomberg, Tree News, Financial Juice, ZeroHedge and MarketFeed post to
+      public Telegram mirrors within seconds of X &mdash; shown here without needing an X login,
+      refreshed every minute <span id="squawkUpd"></span></div>
+    <div id="squawkBody"><div class="loading-msg">Loading squawk feed&hellip;</div></div>
+  </div>
+
   <!-- economic calendar -->
   <div class="card">
     <h2>Scheduled releases &mdash; this week and next</h2>
@@ -174,7 +184,10 @@
   <div class="note">
     Calendar: scheduled economic events for the current and following week (impact ratings as
     published by the feed; red = high impact, amber = medium), regenerated automatically every six
-    hours by a scheduled workflow. Headlines: GDELT project index of worldwide online news
+    hours by a scheduled workflow. Squawk: public Telegram mirrors of fast X news accounts,
+    fetched via a public CORS relay (allorigins/corsproxy) because Telegram's preview pages
+    don't allow direct browser access — posts typically appear seconds after the X original.
+    Headlines: GDELT project index of worldwide online news
     &mdash; new stories typically appear within about 15 minutes of publication and the list
     checks for them every minute while the page is open. Headlines link directly to
     the original source; coverage and accuracy are the source's responsibility. Nothing here is
@@ -349,10 +362,11 @@ async function loadNews(force, attempt) {
   const myTopic = topic;
   const cacheKey = "gdelt_" + myTopic;
   const cached = cacheGet(cacheKey, 55 * 1000);
-  if (cached && !cached.stale && !force) {
-    if (!lastNewsSuccess) lastNewsSuccess = Date.now();
-    renderNews(cached);
-    return;
+  if (cached) {
+    // paint instantly from whatever we have; a refresh continues in the background
+    renderNews(cached.stale ? cached.data : cached);
+    if (!lastNewsSuccess) lastNewsSuccess = cached.stale ? cached.t : Date.now();
+    if (!cached.stale && !force) return;
   }
 
   // GDELT asks for at most one request every 5 seconds
@@ -568,6 +582,74 @@ function computeFocus() {
     `<div class="loading-msg">Not enough coverage data yet.</div>`;
 }
 
+/* ---------- live squawk via public Telegram mirrors ---------- */
+
+const SQUAWK_CHANNELS = [
+  ["walter_bloomberg", "Walter Bloomberg"],
+  ["TreeNews", "Tree News"],
+  ["financialjuice", "Financial Juice"],
+  ["zerohedge_news", "ZeroHedge"],
+  ["marketfeed", "MarketFeed"],
+];
+const SQUAWK_NAMES = Object.fromEntries(SQUAWK_CHANNELS);
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// t.me pages don't send CORS headers, so route through public CORS proxies
+const proxied = u => [
+  "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+  "https://corsproxy.io/?url=" + encodeURIComponent(u),
+];
+
+async function fetchSquawkChannel(ch) {
+  for (const url of proxied(`https://t.me/s/${ch}`)) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) continue;
+      const html = await r.text();
+      if (!html.includes("tgme_widget_message")) continue;
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return [...doc.querySelectorAll(".tgme_widget_message")].map(m => {
+        const txt = m.querySelector(".tgme_widget_message_text");
+        const time = m.querySelector("time[datetime]");
+        const link = m.querySelector("a.tgme_widget_message_date");
+        return txt && time ? {
+          text: txt.textContent.trim(),
+          t: new Date(time.getAttribute("datetime")).getTime(),
+          url: link ? link.href : `https://t.me/s/${ch}`,
+          ch,
+        } : null;
+      }).filter(Boolean);
+    } catch (e) { /* try the next proxy */ }
+  }
+  return [];
+}
+
+async function loadSquawk() {
+  const body = document.getElementById("squawkBody");
+  const results = await Promise.all(SQUAWK_CHANNELS.map(([ch]) => fetchSquawkChannel(ch)));
+  let posts = results.flat().filter(p => p.text.length > 15 && Date.now() - p.t < 36 * 3600000);
+  posts.sort((a, b) => b.t - a.t);
+  const seen = new Set();
+  posts = posts.filter(p => {
+    const k = p.text.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 70);
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 25);
+  if (!posts.length) {
+    if (!body.querySelector(".news-item")) body.innerHTML =
+      `<div class="err">Squawk mirrors are unreachable right now — retrying every minute.</div>`;
+    return;
+  }
+  body.innerHTML = posts.map(p => `
+    <div class="news-item">
+      <a href="${p.url}" target="_blank" rel="noopener">${esc(p.text.slice(0, 240))}${p.text.length > 240 ? "&hellip;" : ""}</a>
+      <div class="news-meta"><span class="ago">${ago(p.t)}</span> · ${SQUAWK_NAMES[p.ch]}</div>
+      ${impactHtml(p.text)}
+    </div>`).join("");
+  document.getElementById("squawkUpd").textContent = "· updated " + new Date().toLocaleTimeString();
+}
+
 /* ---------- X market accounts ---------- */
 
 const X_ACCOUNTS = [
@@ -631,8 +713,9 @@ let lastCycle = Date.now();
 
 computeFocus(); // instant paint from the cached analysis, refreshed on each fetch
 (async () => {
-  await Promise.all([loadCalendar(), loadNews()]);
+  await Promise.all([loadCalendar(), loadNews(), loadSquawk()]);
 })();
+setInterval(() => { if (!document.hidden) loadSquawk(); }, 60 * 1000);
 setInterval(() => {
   lastCycle = Date.now();
   if (!document.hidden) loadNews(true);

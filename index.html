@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪙</text></svg>">
 <title>Real Yields of Major Currencies</title>
 <link rel="preconnect" href="https://sdmx.oecd.org">
 <style>
@@ -411,19 +412,41 @@ async function load() {
   errBox.style.display = "none";
 
   try {
-    const areas = Object.values(CURRENCIES).map(c => c[0]).join("+");
-    const start = startPeriod(15);
-    const yieldUrl = `${OECD}/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/` +
-      `${areas}.M.IRLT.PA.....?startPeriod=${start}&format=csvfile`;
-    const cpiKey = `${areas}.M+Q.N.CPI.PA._T.N.GY?startPeriod=${start}&format=csvfile`;
-    const [yRows, cpiMain, cpiG20] = await Promise.all([
-      fetchCsv(yieldUrl),
-      fetchCsv(`${OECD}/OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0/${cpiKey}`),
-      fetchCsv(`${OECD}/OECD.SDD.TPS,DSD_G20_PRICES@DF_G20_PRICES,1.0/${cpiKey}`),
-    ]);
+    // fast path: one small pre-built file (regenerated server-side every few hours)
+    let yields = null, inflation = null, usRy = null;
+    try {
+      const r = await fetch("data/market.json", { cache: "no-cache" });
+      if (r.ok) {
+        const S = await r.json();
+        if (S.yields && S.inflation &&
+            Date.now() - new Date(S.updated).getTime() < 48 * 3600 * 1000) {
+          yields = {}; inflation = {};
+          for (const a in S.yields) yields[a] = { period: S.yields[a].p, value: S.yields[a].v };
+          for (const a in S.inflation) inflation[a] = { period: S.inflation[a].p, value: S.inflation[a].v };
+          usRy = S.usRealYield || null;
+        }
+      }
+    } catch (e) { /* fall through to live APIs */ }
 
-    const yields = latestByArea(yRows);
-    const inflation = latestByArea(cpiMain.concat(cpiG20));
+    // slow path: query the OECD directly (used only if the data file is missing/stale)
+    if (!yields) {
+      const areas = Object.values(CURRENCIES).map(c => c[0]).join("+");
+      const start = startPeriod(15);
+      const yieldUrl = `${OECD}/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/` +
+        `${areas}.M.IRLT.PA.....?startPeriod=${start}&format=csvfile`;
+      const cpiKey = `${areas}.M+Q.N.CPI.PA._T.N.GY?startPeriod=${start}&format=csvfile`;
+      const [yRows, cpiMain, cpiG20] = await Promise.all([
+        fetchCsv(yieldUrl),
+        fetchCsv(`${OECD}/OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0/${cpiKey}`),
+        fetchCsv(`${OECD}/OECD.SDD.TPS,DSD_G20_PRICES@DF_G20_PRICES,1.0/${cpiKey}`),
+      ]);
+      yields = latestByArea(yRows);
+      inflation = latestByArea(cpiMain.concat(cpiG20));
+      const usY = monthlySeries(yRows, "USA");
+      const usC = monthlySeries(cpiMain.concat(cpiG20), "USA");
+      usRy = Object.keys(usY).filter(p => p in usC).sort()
+        .map(p => ({ p, v: usY[p] - usC[p] }));
+    }
 
     rows = [];
     const skipped = [];
@@ -443,19 +466,15 @@ async function load() {
       skipped.length ? ` No data currently available for: ${skipped.join(", ")}.` : "";
 
     // gold signal: US real-yield level + ~3-month momentum from matched months
-    const usY = monthlySeries(yRows, "USA");
-    const usC = monthlySeries(cpiMain.concat(cpiG20), "USA");
-    const matched = Object.keys(usY).filter(p => p in usC).sort();
     goldData = null;
-    if (matched.length) {
-      const nowP = matched[matched.length - 1];
-      const prevP = matched[Math.max(0, matched.length - 4)];
+    if (usRy && usRy.length) {
+      const now = usRy[usRy.length - 1];
+      const prev = usRy[Math.max(0, usRy.length - 4)];
       const g10 = ["USD", "EUR", "JPY", "GBP", "CHF", "CAD", "AUD"];
       const g10Rows = rows.filter(r => g10.includes(r.currency));
       goldData = {
-        nowP, prevP,
-        nowReal: usY[nowP] - usC[nowP],
-        prevReal: usY[prevP] - usC[prevP],
+        nowP: now.p, prevP: prev.p,
+        nowReal: now.v, prevReal: prev.v,
         dmAvg: g10Rows.length
           ? g10Rows.reduce((s, r) => s + r.real, 0) / g10Rows.length : null,
       };
