@@ -298,15 +298,11 @@ document.getElementById("calBody").addEventListener("click", ev => {
   if (!tr) return;
   const next = tr.nextElementSibling;
   if (next && next.classList.contains("impact-row")) { next.remove(); return; }
-  const i = goldImpact(tr.dataset.title);
+  const a = analyzeImpact(tr.dataset.title);
   const row = document.createElement("tr");
   row.className = "impact-row";
   row.innerHTML = `<td colspan="5"><div class="impact-detail">
-    <b>${i.tag}</b> — ${i.how}<br>
-    <span class="up">&#9650; Bullish for gold:</span> ${i.bull}<br>
-    <span class="down">&#9660; Bearish for gold:</span> ${i.bear}<br>
-    <span style="color:var(--muted)">Markets react to the gap between the released number and
-    the forecast${tr.dataset.title ? "" : ""} — an in-line result often moves nothing.</span>
+    <b>${a.tag}</b> &middot; ${verdictChip(a.v)}<br>${impactDetail(a)}
   </div></td>`;
   tr.after(row);
 });
@@ -439,64 +435,146 @@ document.querySelectorAll("#topicChips .chip").forEach(ch => {
 
 /* ---------- gold-impact knowledge base ---------- */
 
+// Each category has two directional poles (A/B) detected from the headline's own
+// wording, plus an M(ixed) reading when the direction can't be inferred. Every
+// reading carries a TL;DR, the detailed transmission chain, and a nuance to watch.
 const IMPACTS = [
-  { re: /fed\b|fomc|powell|rate cut|rate hike|interest rate|monetary policy|cash rate|bank rate|rate statement|policy minutes|press conference/i,
-    tag: "Fed & central banks",
-    how: "Central-bank policy sets real yields — gold's opportunity cost — and drives the dollar.",
-    bull: "Dovish news (cuts, pauses, hints of easing) lowers real yields and the dollar.",
-    bear: "Hawkish news (hikes, “higher for longer”) raises real yields and lifts the dollar." },
-  { re: /inflation|cpi\b|consumer price|pce\b|producer price|ppi\b|deflation/i,
-    tag: "Inflation",
-    how: "Gold reacts to inflation through what it implies for interest rates and real yields — not the number itself.",
-    bull: "Hot inflation the central bank won't fight (real yields fall), or cooling inflation that unlocks rate cuts.",
-    bear: "Hot inflation that forces aggressive hikes, pushing real yields up." },
-  { re: /jobs|payroll|employment|unemployment|gdp\b|recession|pmi\b|ism\b|retail sales|consumer confidence|manufacturing|industrial|housing|sentiment|trade balance/i,
-    tag: "Growth & data",
-    how: "Growth data steers rate expectations: weak data brings cuts closer, strong data delays them.",
-    bull: "Weak prints (rising unemployment, sub-50 PMI, GDP misses) → cuts closer, yields down.",
-    bear: "Strong prints → higher-for-longer rates and a firmer dollar." },
-  { re: /tariff|trade war|trade deal|trade talks|import dut|export ban/i,
-    tag: "Trade & tariffs",
-    how: "Tariffs are inflationary and growth-damaging at once, and raise policy uncertainty — a stagflation cocktail.",
-    bull: "Escalation → uncertainty and safe-haven demand; historically gold has risen on tariff shocks.",
-    bear: "De-escalation and deals → risk-on mood, hedges unwound." },
-  { re: /war\b|missile|airstrike|strike|sanction|ceasefire|invasion|conflict|military|troops|nuclear|geopolit/i,
-    tag: "Geopolitics",
-    how: "Gold is the classic safe haven — no government or bank can default on it.",
-    bull: "Escalation or a new conflict → an immediate safe-haven bid (fast, but fades if tension eases).",
-    bear: "Ceasefires and de-escalation → the fear premium unwinds." },
-  { re: /bank collapse|bank failure|banking|bailout|liquidity|credit|default|contagion/i,
-    tag: "Banks & credit",
-    how: "Banking stress triggers both flight-to-safety and bets on emergency rate cuts — a double tailwind.",
-    bull: "Failures and stress → strongly gold-positive (March 2023 is the textbook case).",
-    bear: "Stress resolving or bailouts calming nerves → the haven bid fades." },
-  { re: /dollar|treasur|bond|yield/i,
-    tag: "Dollar & bonds",
-    how: "Gold is priced in dollars and competes with bonds for safe-asset money.",
-    bull: "A falling dollar or falling yields make gold cheaper worldwide and lower its opportunity cost.",
-    bear: "Dollar strength, or a bond selloff that lifts real yields." },
-  { re: /gold|bullion|silver|precious/i,
-    tag: "Gold market",
-    how: "Direct gold-market news: flows, central-bank reserves, bank forecasts.",
-    bull: "Central-bank buying, ETF inflows, upgraded price targets.",
-    bear: "ETF outflows, profit-taking, exchange margin hikes." },
+  { tag: "Fed & central banks",
+    re: /fed\b|fomc|powell|rate cut|rate hike|interest rate|monetary policy|cash rate|bank rate|rate statement|policy minutes|press conference|rate decision|central bank/i,
+    A: { re: /\b(cuts?|cutting|dovish|pause[sd]?|holds? rates|easing|lowers? rates|stimulus)\b/i, v: "bull",
+      tldr: "Dovish signal → real yields and the dollar fall → gold's two classic tailwinds at once.",
+      detail: "Rate cuts (or hints of them) pull bond yields down, compressing the real yield that is gold's opportunity cost — holding gold suddenly gives up less income. A softer policy path also usually weakens the dollar, making gold cheaper for buyers in every other currency.",
+      watch: "If the easing comes because recession fear is spiking, safe-haven demand can accelerate the move. If markets had already fully priced the cut, the reaction may be small — surprise is what moves price." },
+    B: { re: /\b(hikes?|hiking|hawkish|raises? rates|higher for longer|tighten(s|ing)?|taper)\b/i, v: "bear",
+      tldr: "Hawkish signal → real yields and the dollar rise → gold's opportunity cost goes up.",
+      detail: "Higher (or longer-held) rates raise the real return on bonds and cash, making zero-yield gold comparatively expensive to hold. The dollar usually firms as money chases the higher rate, adding a second headwind.",
+      watch: "If markets believe the hawkishness will break something — a recession or a credit event — gold can flip to rallying on fear. Watch whether equities and credit sell off alongside." },
+    M: { tldr: "Central-bank news moves gold through real yields and the dollar — direction depends on whether it reads dovish (gold up) or hawkish (gold down).",
+      detail: "A dovish outcome (cut, pause, soft guidance) lowers real yields and the dollar — bullish. A hawkish one (hike, 'higher for longer') does the opposite — bearish. Gold often moves more on the press conference and guidance than on the decision itself.",
+      watch: "The market reacts to the gap versus expectations: a widely expected cut can even see gold fall on the news ('sell the fact')." } },
+  { tag: "Inflation",
+    re: /inflation|cpi\b|consumer price|pce\b|producer price|ppi\b|deflation/i,
+    A: { re: /\b(jumps?|surges?|accelerat\w*|hott?er|above (forecast|expectation)|higher than|beats?|climbs?|rises?|picks? up)\b/i, v: "bear",
+      tldr: "Hotter inflation → fewer/later rate cuts priced → real yields and dollar up → usually negative for gold at first.",
+      detail: "The knee-jerk: a hot print makes traders bet the central bank stays tight for longer, so bond yields and the dollar rise — both raise the cost of holding gold. The important nuance: if the central bank is seen as unwilling or unable to respond, inflation running ahead of rates crushes real yields, which is historically gold's most bullish regime (the 1970s, 2021–22).",
+      watch: "Watch the bond market's verdict: if nominal yields rise more than inflation expectations, real yields rise and gold struggles; if inflation expectations rise more, gold wins despite the hot print." },
+    B: { re: /\b(cools?|slow(s|ing)?|eases?|falls?|drops?|below (forecast|expectation)|miss(es)?|declin\w*|soft(er|ens)?)\b/i, v: "bull",
+      tldr: "Cooler inflation → rate cuts closer → yields and dollar down → usually positive for gold.",
+      detail: "A soft print gives the central bank room to ease sooner. Bond yields fall in anticipation, lowering gold's opportunity cost, and the dollar typically softens with them.",
+      watch: "If inflation is cooling because the economy is cracking, a safe-haven bid adds a second tailwind. The one bad mix for gold is 'immaculate disinflation' with strong growth — that favors stocks over havens." },
+    M: { tldr: "Gold reacts to what the inflation number implies for rates: hot → tighter policy → bearish first; cool → cuts closer → bullish.",
+      detail: "Hotter-than-forecast inflation pushes yields and the dollar up (gold down); cooler-than-forecast does the reverse (gold up). The exception: hot inflation with a passive central bank crushes real yields and is strongly bullish.",
+      watch: "It's the surprise versus the forecast that matters, not the level — check the consensus number next to the release." } },
+  { tag: "Growth & jobs data",
+    re: /jobs|payroll|employment|unemployment|gdp\b|recession|pmi\b|ism\b|retail sales|consumer confidence|manufacturing|industrial|housing|sentiment|trade balance|jobless/i,
+    A: { re: /\b(miss(es)?|weak\w*|falls?|drops?|contract\w*|below|slumps?|layoffs?|cools?|slows?|shrinks?|worse)\b/i, v: "bull",
+      tldr: "Weak data → rate cuts move closer and recession hedging picks up → typically positive for gold.",
+      detail: "Soft growth numbers pull forward expected rate cuts, dragging real yields down — gold's main driver. If the weakness looks recessionary, investors also add gold as a hedge, stacking a safe-haven bid on top of the rates effect.",
+      watch: "In a violent panic, gold can briefly fall with everything else as funds sell winners to cover losses (March 2020) — before the easing trade reasserts itself." },
+    B: { re: /\b(beats?|strong\w*|surges?|jumps?|above|expands?|robust|blowout|rises?|better than|accelerat\w*)\b/i, v: "bear",
+      tldr: "Strong data → rate cuts priced out and the dollar firms → typically a headwind for gold.",
+      detail: "Upside surprises push rate-cut expectations further into the future, lifting bond yields and the dollar — both raise the opportunity cost of holding gold.",
+      watch: "If strong growth comes with rising inflation expectations, real yields may barely move — which blunts the damage to gold." },
+    M: { tldr: "Growth data steers rate expectations: a weak print is usually gold-positive, a strong one gold-negative.",
+      detail: "Weak data → cuts closer → yields down → gold up. Strong data → higher-for-longer → yields and dollar up → gold down. The size of the move depends on how far the number lands from the consensus forecast.",
+      watch: "For jobs reports, the wage-growth figure inside the release can matter as much as the headline jobs number — fast wages feed inflation." } },
+  { tag: "Trade & tariffs",
+    re: /tariff|trade war|trade deal|trade talks|import dut|export ban/i,
+    A: { re: /\b(imposes?|new|raises?|threat\w*|slaps?|retaliat\w*|escalat\w*|hikes?|widens?)\b/i, v: "bull",
+      tldr: "Tariff escalation → stagflation risk + uncertainty → historically supportive for gold.",
+      detail: "Tariffs raise import prices (inflationary) while damaging trade and growth (recessionary) — a combination central banks can't fix with one tool, which is exactly the uncertainty gold hedges. Escalation headlines have repeatedly triggered hedging flows into bullion.",
+      watch: "A sharp dollar rally on the same headline can offset part of gold's bid — the net effect depends on which safe haven wins the flow." },
+    B: { re: /\b(deal|agrees?|cuts?|suspends?|pauses?|rolls? back|truce|exempts?|resolves?)\b/i, v: "bear",
+      tldr: "Trade de-escalation → risk-on, hedges unwound → gold often gives back its tariff premium.",
+      detail: "Deals and suspensions reduce the stagflation tail-risk investors were hedging, so money rotates from havens back into risk assets.",
+      watch: "Trade headlines reverse often — durable agreements matter far more than announcements, and gold traders fade the first headline more than they used to." },
+    M: { tldr: "Tariff news is a stagflation story: escalation is usually gold-positive, de-escalation gold-negative.",
+      detail: "New or higher tariffs raise inflation and damage growth simultaneously — bullish for gold as a hedge. Deals and suspensions unwind that hedge — bearish.",
+      watch: "Watch the dollar's reaction: tariff shocks sometimes strengthen the dollar, which dampens gold's response." } },
+  { tag: "Geopolitics",
+    re: /war\b|missile|airstrike|strike|sanction|ceasefire|invasion|conflict|military|troops|nuclear|geopolit|drone|explos/i,
+    A: { re: /\b(attack\w*|strikes?|missiles?|invades?|invasion|escalat\w*|explos\w*|clash\w*|killed|drones?|shot down|blast|seiz\w*|fires?|risk)\b/i, v: "bull",
+      tldr: "Escalation → immediate safe-haven bid → gold typically jumps within minutes.",
+      detail: "Gold is the hedge with no counterparty — conflict headlines trigger reflexive buying, often alongside the dollar and Treasury bonds. If the conflict threatens energy supply (Middle East, shipping lanes), an oil-price/inflation channel stacks on top of the fear bid.",
+      watch: "Crisis pops fade fast when escalation stalls — the classic 'buy the rumor of war, sell the war' pattern. Whether the gain sticks depends on the real-yield backdrop underneath." },
+    B: { re: /\b(ceasefire|truce|peace|de-?escalat\w*|agreement|halts?|withdraws?|talks (resume|progress))\b/i, v: "bear",
+      tldr: "De-escalation → the fear premium unwinds → gold usually slips.",
+      detail: "As conflict risk recedes, the safe-haven positioning built up during the escalation is unwound and money rotates back to risk assets.",
+      watch: "If gold barely falls on genuinely good news, that signals the rally was never mainly about the conflict — usually a bullish tell about the underlying trend." },
+    M: { tldr: "Geopolitical news moves gold through fear: escalation bullish, de-escalation bearish, both often quickly.",
+      detail: "Gold's safe-haven bid is reflexive and fast but mean-reverting — the market prices conflict risk within hours. Sustained geopolitical premiums require sustained escalation.",
+      watch: "Energy-relevant conflicts have a second, slower channel through oil prices and inflation." } },
+  { tag: "Banks & credit",
+    re: /bank collapse|bank failure|banking|bailout|liquidity|credit|default|contagion|downgrade/i,
+    A: { re: /\b(collaps\w*|fail\w*|crisis|contagion|bank run|defaults?|downgrades?|losses|stress|trouble)\b/i, v: "bull",
+      tldr: "Banking stress → flight to safety + emergency-easing bets → one of gold's strongest setups.",
+      detail: "Bank trouble fires both of gold's engines at once: investors flee counterparty risk into the one asset that can't default, while markets race to price emergency rate cuts, crushing real yields. In March 2023 (SVB), gold rose roughly 10% in two weeks on exactly this mix.",
+      watch: "If stress turns into a full liquidation event, gold can dip for a few days as funds sell everything for cash — historically a buying window, not a trend change." },
+    B: { re: /\b(rescu\w*|stabili\w*|calms?|recover\w*|backstop|guarantee[sd]?|resolved)\b/i, v: "bear",
+      tldr: "Stress contained → haven bid and rate-cut bets fade → gold gives back some gains.",
+      detail: "Effective backstops reverse both drivers: counterparty fear recedes and emergency-easing expectations are priced back out.",
+      watch: "Markets often doubt the first rescue — gold frequently holds its gains until the calm has lasted more than a few sessions." },
+    M: { tldr: "Credit and banking news is a fear-plus-rates story: stress is strongly gold-positive, resolution gold-negative.",
+      detail: "Stress means haven demand plus rate-cut bets (both bullish); credible resolution unwinds both (bearish).",
+      watch: "The speed of central-bank response is the swing factor — fast liquidity support means more easing priced, which helps gold either way." } },
+  { tag: "Dollar & bonds",
+    re: /dollar|dxy|treasur|bond|yield/i,
+    A: { re: /(dollar|dxy|greenback).{0,25}(weak\w*|falls?|slips?|drops?|slumps?|lows?)|yields?.{0,20}(fall|drop|declin|slide|retreat)|bond (rally|rebound)/i, v: "bull",
+      tldr: "Falling dollar / falling yields → gold gets cheaper worldwide and its opportunity cost drops → bullish.",
+      detail: "A weaker dollar makes dollar-priced gold cheaper for the rest of the world, lifting demand. Falling bond yields shrink the income you give up by holding gold instead — the two effects usually arrive together and compound.",
+      watch: "Check why yields are falling: growth fear (gold-friendly) versus pure disinflation optimism (less so)." },
+    B: { re: /(dollar|dxy|greenback).{0,25}(strength\w*|rall\w*|rises?|gains?|surges?|jumps?|highs?)|yields?.{0,20}(rise|jump|surge|climb|spike)|bond (selloff|rout)/i, v: "bear",
+      tldr: "Rising dollar / rising yields → gold's opportunity cost climbs → bearish.",
+      detail: "Dollar strength makes gold dearer for non-US buyers, and rising yields raise the real return on the competing safe asset. A bond selloff that lifts real yields is the textbook gold headwind.",
+      watch: "If yields rise because inflation expectations are exploding (not real rates), gold can rise alongside — the split between real and breakeven yields is the tell." },
+    M: { tldr: "Gold trades inversely to the dollar and to real bond yields — this story's direction decides which way.",
+      detail: "Dollar/yields up → gold down; dollar/yields down → gold up. This is gold's most mechanical relationship, playing out tick by tick during big bond-market moves.",
+      watch: "Real (inflation-adjusted) yields matter more than nominal ones — see this site's front page." } },
+  { tag: "Gold market",
+    re: /gold|bullion|silver|precious/i,
+    A: { re: /\b(rall\w*|records?|highs?|inflows?|buy\w*|surges?|jumps?|upgrades?|targets? raised|demand|climbs?|rises?)\b/i, v: "bull",
+      tldr: "Bullish gold-market news: buying flows, records or raised targets reinforce the uptrend.",
+      detail: "Direct demand news — central-bank purchases, ETF inflows, higher bank price targets — adds real buying pressure and draws momentum-followers in. Central-bank buying in particular has been the structural bid under gold since 2022.",
+      watch: "New all-time-high headlines attract retail buying but also profit-taking — momentum works until positioning gets crowded (check the COT percentile on the Gold drivers page)." },
+    B: { re: /\b(falls?|drops?|outflows?|selloff|slumps?|profit[- ]taking|downgrades?|declines?|retreats?|sinks?)\b/i, v: "bear",
+      tldr: "Bearish gold-market news: selling flows or profit-taking pressure the price directly.",
+      detail: "ETF outflows, fund liquidations and downgraded forecasts remove the marginal buyer. Sharp one-day drops are often positioning washouts rather than changes in the fundamental story.",
+      watch: "If a drop happens without any move in real yields or the dollar, it's usually positioning noise — the fundamental drivers reassert within days." },
+    M: { tldr: "Direct gold-market coverage — the driver here is flows and positioning rather than macro.",
+      detail: "Watch which flow the story describes: central-bank reserves and ETF flows are the slow structural forces; futures positioning is the fast, mean-reverting one.",
+      watch: "Cross-check the story against the live drivers on the Gold drivers page — flows follow the macro more often than they lead it." } },
 ];
-const DEFAULT_IMPACT = {
-  tag: "General macro",
-  how: "Most macro news reaches gold through three channels: real yields, the US dollar, and fear.",
-  bull: "Anything that lowers real yields, weakens the dollar, or raises uncertainty.",
-  bear: "Anything that lifts real yields or strengthens the dollar.",
-};
-function goldImpact(text) {
-  for (const i of IMPACTS) if (i.re.test(text || "")) return i;
-  return DEFAULT_IMPACT;
+const DEFAULT_IMPACT = { tag: "General macro",
+  M: { tldr: "Reaches gold through three channels: real yields, the US dollar, and fear.",
+    detail: "Anything that lowers real yields, weakens the dollar, or raises uncertainty tends to lift gold; anything that does the opposite weighs on it. If a story doesn't clearly touch one of those channels, gold usually ignores it.",
+    watch: "The bigger the surprise relative to what markets expected, the bigger the reaction." } };
+
+function analyzeImpact(text) {
+  const t = text || "";
+  for (const cat of IMPACTS) {
+    if (!cat.re.test(t)) continue;
+    if (cat.A && cat.A.re.test(t)) return { tag: cat.tag, ...cat.A };
+    if (cat.B && cat.B.re.test(t)) return { tag: cat.tag, ...cat.B };
+    return { tag: cat.tag, v: "mixed", ...cat.M };
+  }
+  return { tag: DEFAULT_IMPACT.tag, v: "mixed", ...DEFAULT_IMPACT.M };
+}
+function verdictChip(v) {
+  return v === "bull" ? `<span class="up">likely bullish &#9650;</span>` :
+         v === "bear" ? `<span class="down">likely bearish &#9660;</span>` :
+         `<span class="muted">two-sided</span>`;
+}
+function impactDetail(a) {
+  return `<b>TL;DR:</b> ${a.tldr}<br>
+    <b>The chain:</b> ${a.detail}<br>
+    <b>Watch for:</b> ${a.watch}<br>
+    <span class="muted" style="font-size:11px">Read automatically from the wording — verify against the full story.</span>`;
 }
 function impactHtml(text) {
-  const i = goldImpact(text);
-  return `<span class="impact-toggle" onclick="toggleImpact(this)">&#9656; Gold impact — ${i.tag}</span>
-    <div class="impact-detail hidden">${i.how}<br>
-    <span class="up">&#9650; Bullish for gold:</span> ${i.bull}<br>
-    <span class="down">&#9660; Bearish for gold:</span> ${i.bear}</div>`;
+  const a = analyzeImpact(text);
+  return `<span class="impact-toggle" onclick="toggleImpact(this)">&#9656; Gold impact
+    (${a.tag}): ${verdictChip(a.v)}</span>
+    <div class="impact-detail hidden">${impactDetail(a)}</div>`;
 }
 function toggleImpact(el) {
   const d = el.nextElementSibling;
