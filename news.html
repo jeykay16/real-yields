@@ -302,7 +302,7 @@ document.getElementById("calBody").addEventListener("click", ev => {
   const row = document.createElement("tr");
   row.className = "impact-row";
   row.innerHTML = `<td colspan="5"><div class="impact-detail">
-    <b>${a.tag}</b> &middot; ${verdictChip(a.v)}<br>${impactDetail(a)}
+    <b>${a.tag}</b> &middot; ${verdictChip(a)}<br>${impactDetail(a)}
   </div></td>`;
   tr.after(row);
 });
@@ -454,11 +454,11 @@ const IMPACTS = [
       watch: "The market reacts to the gap versus expectations: a widely expected cut can even see gold fall on the news ('sell the fact')." } },
   { tag: "Inflation",
     re: /inflation|cpi\b|consumer price|pce\b|producer price|ppi\b|deflation/i,
-    A: { re: /\b(jumps?|surges?|accelerat\w*|hott?er|above (forecast|expectation)|higher than|beats?|climbs?|rises?|picks? up)\b/i, v: "bear",
+    A: { re: /\b(jumps?|surges?|accelerat\w*|hott?er|above (forecast|expectation)|higher than|beats?|climbs?|rises?|picks? up|(edges?|ticks?|moves?|inch\w*)( \w+)? (up|higher))\b/i, v: "bear",
       tldr: "Hotter inflation → fewer/later rate cuts priced → real yields and dollar up → usually negative for gold at first.",
       detail: "The knee-jerk: a hot print makes traders bet the central bank stays tight for longer, so bond yields and the dollar rise — both raise the cost of holding gold. The important nuance: if the central bank is seen as unwilling or unable to respond, inflation running ahead of rates crushes real yields, which is historically gold's most bullish regime (the 1970s, 2021–22).",
       watch: "Watch the bond market's verdict: if nominal yields rise more than inflation expectations, real yields rise and gold struggles; if inflation expectations rise more, gold wins despite the hot print." },
-    B: { re: /\b(cools?|slow(s|ing)?|eases?|falls?|drops?|below (forecast|expectation)|miss(es)?|declin\w*|soft(er|ens)?)\b/i, v: "bull",
+    B: { re: /\b(cools?|slow(s|ing)?|eases?|falls?|drops?|below (forecast|expectation)|miss(es)?|declin\w*|soft(er|ens)?|(edges?|ticks?|moves?|inch\w*)( \w+)? (down|lower))\b/i, v: "bull",
       tldr: "Cooler inflation → rate cuts closer → yields and dollar down → usually positive for gold.",
       detail: "A soft print gives the central bank room to ease sooner. Bond yields fall in anticipation, lowering gold's opportunity cost, and the dollar typically softens with them.",
       watch: "If inflation is cooling because the economy is cracking, a safe-haven bid adds a second tailwind. The one bad mix for gold is 'immaculate disinflation' with strong growth — that favors stocks over havens." },
@@ -467,11 +467,11 @@ const IMPACTS = [
       watch: "It's the surprise versus the forecast that matters, not the level — check the consensus number next to the release." } },
   { tag: "Growth & jobs data",
     re: /jobs|payroll|employment|unemployment|gdp\b|recession|pmi\b|ism\b|retail sales|consumer confidence|manufacturing|industrial|housing|sentiment|trade balance|jobless/i,
-    A: { re: /\b(miss(es)?|weak\w*|falls?|drops?|contract\w*|below|slumps?|layoffs?|cools?|slows?|shrinks?|worse)\b/i, v: "bull",
+    A: { re: /\b(miss(es)?|weak\w*|falls?|drops?|contract\w*|below|slumps?|layoffs?|cools?|slows?|shrinks?|worse|(edges?|ticks?|inch\w*)( \w+)? (down|lower))\b/i, v: "bull",
       tldr: "Weak data → rate cuts move closer and recession hedging picks up → typically positive for gold.",
       detail: "Soft growth numbers pull forward expected rate cuts, dragging real yields down — gold's main driver. If the weakness looks recessionary, investors also add gold as a hedge, stacking a safe-haven bid on top of the rates effect.",
       watch: "In a violent panic, gold can briefly fall with everything else as funds sell winners to cover losses (March 2020) — before the easing trade reasserts itself." },
-    B: { re: /\b(beats?|strong\w*|surges?|jumps?|above|expands?|robust|blowout|rises?|better than|accelerat\w*)\b/i, v: "bear",
+    B: { re: /\b(beats?|strong\w*|surges?|jumps?|above|expands?|robust|blowout|rises?|better than|accelerat\w*|(edges?|ticks?|inch\w*)( \w+)? (up|higher))\b/i, v: "bear",
       tldr: "Strong data → rate cuts priced out and the dollar firms → typically a headwind for gold.",
       detail: "Upside surprises push rate-cut expectations further into the future, lifting bond yields and the dollar — both raise the opportunity cost of holding gold.",
       watch: "If strong growth comes with rising inflation expectations, real yields may barely move — which blunts the damage to gold." },
@@ -532,11 +532,11 @@ const IMPACTS = [
       watch: "Real (inflation-adjusted) yields matter more than nominal ones — see this site's front page." } },
   { tag: "Gold market",
     re: /gold|bullion|silver|precious/i,
-    A: { re: /\b(rall\w*|records?|highs?|inflows?|buy\w*|surges?|jumps?|upgrades?|targets? raised|demand|climbs?|rises?)\b/i, v: "bull",
+    A: { re: /\b(rall\w*|records?|highs?|inflows?|buy\w*|surges?|jumps?|upgrades?|targets? raised|demand|climbs?|rises?|(edges?|ticks?|inch\w*)( \w+)? (up|higher))\b/i, v: "bull",
       tldr: "Bullish gold-market news: buying flows, records or raised targets reinforce the uptrend.",
       detail: "Direct demand news — central-bank purchases, ETF inflows, higher bank price targets — adds real buying pressure and draws momentum-followers in. Central-bank buying in particular has been the structural bid under gold since 2022.",
       watch: "New all-time-high headlines attract retail buying but also profit-taking — momentum works until positioning gets crowded (check the COT percentile on the Gold drivers page)." },
-    B: { re: /\b(falls?|drops?|outflows?|selloff|slumps?|profit[- ]taking|downgrades?|declines?|retreats?|sinks?)\b/i, v: "bear",
+    B: { re: /\b(falls?|drops?|outflows?|selloff|slumps?|profit[- ]taking|downgrades?|declines?|retreats?|sinks?|(edges?|ticks?|inch\w*)( \w+)? (down|lower))\b/i, v: "bear",
       tldr: "Bearish gold-market news: selling flows or profit-taking pressure the price directly.",
       detail: "ETF outflows, fund liquidations and downgraded forecasts remove the marginal buyer. Sharp one-day drops are often positioning washouts rather than changes in the fundamental story.",
       watch: "If a drop happens without any move in real yields or the dollar, it's usually positioning noise — the fundamental drivers reassert within days." },
@@ -549,31 +549,57 @@ const DEFAULT_IMPACT = { tag: "General macro",
     detail: "Anything that lowers real yields, weakens the dollar, or raises uncertainty tends to lift gold; anything that does the opposite weighs on it. If a story doesn't clearly touch one of those channels, gold usually ignores it.",
     watch: "The bigger the surprise relative to what markets expected, the bigger the reaction." } };
 
+// how hard each category typically hits gold when it fires (1 mild – 3 strong)
+const CAT_WEIGHT = {
+  "Fed & central banks": 3, "Inflation": 3, "Banks & credit": 3,
+  "Geopolitics": 2, "Trade & tariffs": 2, "Dollar & bonds": 2,
+  "Growth & jobs data": 2, "Gold market": 2, "General macro": 1,
+};
+const INTENSE = /surge|plunge|collaps|crash|soar|crisis|emergency|record|all-?time|biggest|worst|slam|rout|panic|shock|massive|historic|unprecedented|spiral/i;
+const MILD = /slight|modest|edge[sd]?|tick[sd]?|marginal|little|barely|small|muted|inch/i;
+
 function analyzeImpact(text) {
   const t = text || "";
   for (const cat of IMPACTS) {
-    if (!cat.re.test(t)) continue;
-    if (cat.A && cat.A.re.test(t)) return { tag: cat.tag, ...cat.A };
-    if (cat.B && cat.B.re.test(t)) return { tag: cat.tag, ...cat.B };
-    return { tag: cat.tag, v: "mixed", ...cat.M };
+    const catMatch = t.match(cat.re);
+    if (!catMatch) continue;
+    const build = (pole, dirMatch) => {
+      let strength = CAT_WEIGHT[cat.tag] || 1;
+      if (INTENSE.test(t)) strength += 1;
+      if (MILD.test(t)) strength -= 1;
+      strength = Math.max(1, Math.min(3, strength));
+      return { tag: cat.tag, ...pole, strength,
+        triggers: [...new Set([catMatch[0], dirMatch && dirMatch[0], (t.match(INTENSE) || [])[0]]
+          .filter(Boolean).map(s => s.trim().toLowerCase()))] };
+    };
+    if (cat.A) { const m = t.match(cat.A.re); if (m) return build(cat.A, m); }
+    if (cat.B) { const m = t.match(cat.B.re); if (m) return build(cat.B, m); }
+    return { tag: cat.tag, v: "mixed", ...cat.M, strength: 0, triggers: [catMatch[0].trim()] };
   }
-  return { tag: DEFAULT_IMPACT.tag, v: "mixed", ...DEFAULT_IMPACT.M };
+  return { tag: DEFAULT_IMPACT.tag, v: "mixed", ...DEFAULT_IMPACT.M, strength: 0, triggers: [] };
 }
-function verdictChip(v) {
-  return v === "bull" ? `<span class="up">likely bullish &#9650;</span>` :
-         v === "bear" ? `<span class="down">likely bearish &#9660;</span>` :
-         `<span class="muted">two-sided</span>`;
+function verdictChip(a) {
+  const v = typeof a === "string" ? a : a.v;
+  const s = typeof a === "string" ? 0 : (a.strength || 0);
+  const word = s >= 3 ? "strongly" : s === 2 ? "clearly" : "mildly";
+  if (v === "bull") return `<span class="up">${word} bullish ${"&#9650;".repeat(Math.max(1, s))}</span>`;
+  if (v === "bear") return `<span class="down">${word} bearish ${"&#9660;".repeat(Math.max(1, s))}</span>`;
+  return `<span class="muted">two-sided</span>`;
 }
 function impactDetail(a) {
   return `<b>TL;DR:</b> ${a.tldr}<br>
     <b>The chain:</b> ${a.detail}<br>
     <b>Watch for:</b> ${a.watch}<br>
-    <span class="muted" style="font-size:11px">Read automatically from the wording — verify against the full story.</span>`;
+    ${a.triggers && a.triggers.length ?
+      `<span class="muted" style="font-size:11px">Signals picked up: ${a.triggers.map(s => `“${s}”`).join(", ")}` +
+      `${a.strength ? ` · strength ${a.strength}/3 (category weight ${CAT_WEIGHT[a.tag] || 1} ${INTENSE.test(a.triggers.join(" ")) ? "+ intense wording" : "± wording"})` : ""}` +
+      ` — read automatically from the wording; verify against the full story.</span>` :
+      `<span class="muted" style="font-size:11px">Read automatically from the wording — verify against the full story.</span>`}`;
 }
 function impactHtml(text) {
   const a = analyzeImpact(text);
   return `<span class="impact-toggle" onclick="toggleImpact(this)">&#9656; Gold impact
-    (${a.tag}): ${verdictChip(a.v)}</span>
+    (${a.tag}): ${verdictChip(a)}</span>
     <div class="impact-detail hidden">${impactDetail(a)}</div>`;
 }
 function toggleImpact(el) {
