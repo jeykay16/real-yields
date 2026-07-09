@@ -124,7 +124,10 @@
 
   <!-- Overall scorecard -->
   <div class="card" id="scorecard">
-    <h2>Overall backdrop <span class="badge neut" id="scoreBadge">&hellip;</span></h2>
+    <h2>&#129517; Overall gold bias &mdash; all signals combined <span class="badge neut" id="scoreBadge">&hellip;</span></h2>
+    <div class="cap" style="color:var(--muted);font-size:12px;margin-top:4px">Real yields &middot; the dollar &middot;
+      speculative positioning &middot; the live news tape &mdash; fused into one verdict, with each factor
+      ranked by how hard it is currently pushing</div>
     <div class="loading-msg" id="scoreBody">Waiting for the panels below to load&hellip;</div>
   </div>
 
@@ -197,6 +200,7 @@
     &middot; <a href="https://github.com/jeykay16/real-yields" style="color:var(--accent)">Source code</a></div>
 </div>
 
+<script src="impact.js"></script>
 <script>
 const OECD = "https://sdmx.oecd.org/public/rest/data";
 const fmtSign = v => (v >= 0 ? "+" : "") + v.toFixed(2);
@@ -222,8 +226,8 @@ const badge = (el, text, cls) => {
 };
 const tag = s => s > 0 ? ["&#9650; Bullish", "pos"] : s < 0 ? ["&#9660; Bearish", "neg"] : ["&#9679; Neutral", "neut"];
 
-// factors gathered by the three panels, then combined in the scorecard
-const scoreFactors = { ry: null, usd: null, cot: null };
+// factors gathered by the panels + live news flow, combined in the scorecard
+const scoreFactors = { ry: null, usd: null, cot: null, news: null };
 
 /* ---------- panel 1: real yields vs gold ---------- */
 
@@ -376,13 +380,16 @@ function finishRyPanel(spotPrice) {
   const nowReal = ry[ry.length - 1].v;
   const prevReal = ry[Math.max(0, ry.length - 4)].v;
   const chg = nowReal - prevReal;
-  const s = (nowReal < 0 ? 2 : nowReal < 1 ? 1 : nowReal < 2 ? -1 : -2) +
-            (chg < -0.25 ? 1 : chg > 0.25 ? -1 : 0);
+  const levelScore = nowReal < 0 ? 2 : nowReal < 1 ? 1 : nowReal < 2 ? -1 : -2;
+  const trendScore = chg < -0.25 ? 1 : chg > 0.25 ? -1 : 0;
+  const s = levelScore + trendScore;
   scoreFactors.ry = {
     s: Math.max(-1, Math.min(1, s)),
+    mag: Math.min(3, Math.abs(levelScore) + Math.abs(trendScore)),
+    name: "Real yields",
     label: `Real yields: ${fmtSign(nowReal)}% and ${chg < -0.25 ? "falling" : chg > 0.25 ? "rising" : "flat"} (${fmtSign(chg)}pp / 3m)`,
-    reason: s > 0 ? "Low/falling real yields shrink the cost of holding gold." :
-            s < 0 ? "High/rising real yields make bonds more attractive than gold." :
+    reason: s > 0 ? "Low/falling real yields shrink the cost of holding gold — bullish." :
+            s < 0 ? "High/rising real yields make bonds more attractive than gold — bearish." :
             "Real yields are neither cheap nor dear, nor moving much.",
   };
   const [t1, c1] = tag(scoreFactors.ry.s);
@@ -732,9 +739,11 @@ async function loadDollarPanel() {
   const s = m3 < -2 ? 1 : m3 > 2 ? -1 : 0;
   scoreFactors.usd = {
     s,
+    mag: Math.min(3, Math.abs(m3)),
+    name: "US dollar",
     label: `US dollar: ${fmtSign(m3)}% over 3 months`,
-    reason: s > 0 ? "A weakening dollar makes gold cheaper worldwide — a tailwind." :
-            s < 0 ? "A strengthening dollar makes gold dearer worldwide — a headwind." :
+    reason: s > 0 ? "A weakening dollar makes gold cheaper worldwide — bullish." :
+            s < 0 ? "A strengthening dollar makes gold dearer worldwide — bearish." :
             "The dollar is roughly stable, neither helping nor hurting gold.",
   };
   const [t2, c2] = tag(s);
@@ -775,9 +784,11 @@ async function loadCotPanel() {
   const s = pct > 85 ? -1 : pct < 15 ? 1 : 0;
   scoreFactors.cot = {
     s,
+    mag: Math.abs(pct - 50) / 50 * 3,
+    name: "Positioning",
     label: `Positioning: ${Math.round(pct)}th percentile of 3 years`,
-    reason: s < 0 ? "Funds are near maximum long — crowded trades are fragile, a contrarian warning." :
-            s > 0 ? "Longs have been washed out — plenty of sidelined buyers, a contrarian positive." :
+    reason: s < 0 ? "Funds are near maximum long — crowded trades are fragile, a contrarian bearish warning." :
+            s > 0 ? "Longs have been washed out — plenty of sidelined buyers, a contrarian bullish signal." :
             "Positioning is unstretched, leaving room for funds to add in either direction.",
   };
   const [t3, c3] = tag(s);
@@ -791,10 +802,51 @@ async function loadCotPanel() {
     <div class="stat"><div class="v muted">${now.d}</div><div class="k">report date</div></div>`;
 }
 
-/* ---------- scorecard ---------- */
+/* ---------- news-flow factor (live headline sentiment) ---------- */
+
+async function loadNewsSentiment() {
+  let articles = null;
+  try {
+    const c = JSON.parse(localStorage.getItem("gdelt_all"));
+    if (c && Date.now() - c.t < 10 * 60 * 1000) articles = c.data; // reuse the news page's cache
+  } catch (e) {}
+  if (!articles) {
+    const q = encodeURIComponent('("federal reserve" OR inflation OR tariffs OR "gold price" OR ' +
+      '"jobs report" OR "interest rates" OR sanctions OR "banking crisis" OR "treasury yields" OR ' +
+      '"safe haven" OR "government shutdown" OR escalation) sourcelang:eng');
+    const r = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${q}` +
+      `&mode=artlist&maxrecords=75&format=json&sort=datedesc&timespan=1d`);
+    if (!r.ok) throw new Error("news HTTP " + r.status);
+    articles = (await r.json()).articles || [];
+  }
+  let bull = 0, bear = 0, weighted = 0;
+  const seen = new Set();
+  for (const a of articles) {
+    const k = (a.title || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 60);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    const an = analyzeImpact(a.title);
+    if (an.v === "bull") { bull++; weighted += an.strength; }
+    else if (an.v === "bear") { bear++; weighted -= an.strength; }
+  }
+  if (!seen.size) throw new Error("no readable headlines");
+  const net = weighted / (3 * seen.size); // -1..1
+  const s = net > 0.08 ? 1 : net < -0.08 ? -1 : 0;
+  scoreFactors.news = {
+    s,
+    mag: Math.min(3, Math.abs(net) * 10),
+    name: "News flow",
+    label: `News flow: ${bull} bullish vs ${bear} bearish stories (last 24h)`,
+    reason: s > 0 ? "Today's tape is skewed to gold-positive stories — dovish, weak-data or escalation headlines dominate." :
+            s < 0 ? "Today's tape is skewed to gold-negative stories — hawkish, strong-data or de-escalation headlines dominate." :
+            "Bullish and bearish headlines are roughly balanced — news is not gold's driver today.",
+  };
+}
+
+/* ---------- overall gold bias ---------- */
 
 function renderScorecard() {
-  const fs = [scoreFactors.ry, scoreFactors.usd, scoreFactors.cot].filter(Boolean);
+  const fs = [scoreFactors.ry, scoreFactors.usd, scoreFactors.cot, scoreFactors.news].filter(Boolean);
   if (!fs.length) {
     document.getElementById("scoreBody").innerHTML =
       `<div class="err">No panels could load — check your connection and refresh.</div>`;
@@ -808,15 +860,37 @@ function renderScorecard() {
     score === -1 ? ["MILDLY BEARISH for gold", "bear"] :
     ["BEARISH for gold", "bear"];
   badge("scoreBadge", text, cls);
+
+  // rank the factors by how forcefully each is acting on gold right now
+  const ranked = [...fs].sort((a, b) => (b.mag || 0) - (a.mag || 0));
+  const maxMag = Math.max(0.15, ...ranked.map(f => f.mag || 0));
+  const strengthWord = m => m >= 2.2 ? "strong" : m >= 1.2 ? "moderate" : "faint";
+  const dirWord = f => f.s > 0 ? `<span class="up">bullish</span>` :
+                       f.s < 0 ? `<span class="down">bearish</span>` :
+                       `<span class="muted">neutral</span>`;
+  const top = ranked[0];
+
   document.getElementById("scoreBody").innerHTML =
     `<ul class="factors">${fs.map(f => {
       const [t, c] = tag(f.s);
-      return `<li><span class="factor-tag ${c}">${t}</span><span><b>${f.label}</b> &mdash; ${f.reason}</span></li>`;
+      return `<li><span class="factor-tag ${c}">${t}</span><span><b>${f.label}</b> &mdash; ${colorizeBias(f.reason)}</span></li>`;
     }).join("")}</ul>
-    <p class="explain">The verdict sums the three factors${fs.length < 3 ?
-      " (some panels failed to load and are excluded)" : ""}. Real yields carry the most
-    weight conceptually; the dollar and positioning confirm or contradict. When all three
-    point the same way, the signal has historically been at its most reliable.</p>`;
+
+    <p class="explain" style="margin-top:16px"><b>What's driving gold right now</b> &mdash;
+    each factor ranked by how forcefully it is currently acting (signal strength, not just direction):</p>
+    ${ranked.map(f => `
+      <div class="rank-row">
+        <span class="rk-name">${f.name}</span>
+        <div class="rk-track"><div class="rk-fill ${f.s > 0 ? "up" : f.s < 0 ? "down" : "neut"}"
+          style="width:${Math.round((f.mag || 0) / maxMag * 100)}%"></div></div>
+        <span class="rk-val">${strengthWord(f.mag || 0)} · ${dirWord(f)}</span>
+      </div>`).join("")}
+    <p class="explain"><b>Most prominent driver right now: ${top.name}</b> &mdash; ${colorizeBias(top.reason)}</p>
+
+    <p class="explain">The verdict sums all ${fs.length} factors${fs.length < 4 ?
+      " (a factor failed to load and is excluded)" : ""}. Real yields carry the most weight
+    conceptually; the dollar, positioning and the news tape confirm or contradict. When they
+    all point the same way, the signal has historically been at its most reliable.</p>`;
 }
 
 /* ---------- live price ticker ---------- */
@@ -871,6 +945,7 @@ async function loadAll() {
     loadCotPanel().catch(e => {
       document.getElementById("cotStats").innerHTML = `<div class="err">Could not load: ${e.message}</div>`;
     }),
+    loadNewsSentiment().catch(() => { /* excluded from the scorecard if unavailable */ }),
   ];
   await Promise.all(jobs);
   renderScorecard();
