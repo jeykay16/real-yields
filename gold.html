@@ -227,7 +227,55 @@ const badge = (el, text, cls) => {
 const tag = s => s > 0 ? ["&#9650; Bullish", "pos"] : s < 0 ? ["&#9660; Bearish", "neg"] : ["&#9679; Neutral", "neut"];
 
 // factors gathered by the panels + live news flow, combined in the scorecard
-const scoreFactors = { ry: null, usd: null, cot: null, news: null };
+const scoreFactors = { ry: null, usd: null, cot: null, news: null,
+                       mom: null, fed: null, geo: null, cb: null, season: null };
+
+// factors that genuinely matter for gold but have no free live data source —
+// declared openly instead of silently omitted
+const INFO_FACTORS = [
+  ["Gold ETF flows", "Fund in/outflows confirm or contradict rallies, but weekly flow data isn't freely available live — check gold.org's fund-flows page. Strong inflows accompanied every major bull run."],
+  ["Physical & jewellery demand", "India and China's festival/wedding buying puts a seasonal floor under prices; visible in local premiums, not measurable live here."],
+  ["Mine supply & recycling", "Supply grows only ~1–2% a year — it shapes decade-long trends, never daily prices."],
+];
+
+// slow-moving factors set from documented facts rather than a live feed
+function setStructuralFactors() {
+  // Fed policy direction, from the pre-built central-bank data
+  const us = STATIC && STATIC.cbRates && STATIC.cbRates.US;
+  if (us) {
+    const eightMo = new Date(); eightMo.setMonth(eightMo.getMonth() - 8);
+    const active = us.change && us.change.date >= eightMo.toISOString().slice(0, 10);
+    const cutting = active && us.change.to < us.change.from;
+    const hiking = active && us.change.to > us.change.from;
+    const net = Math.round((us.rate - us.yearAgo) * 100);
+    scoreFactors.fed = {
+      s: cutting ? 1 : hiking ? -1 : 0, w: 2,
+      mag: Math.min(3, Math.abs(net) / 50 + (active ? 1 : 0)),
+      name: "Fed direction",
+      label: `Fed policy: ${cutting ? "cutting" : hiking ? "hiking" : "on hold"} (${net >= 0 ? "+" : ""}${net}bp over 12m, rate ${us.rate.toFixed(2)}%)`,
+      reason: cutting ? "An active easing cycle is historically gold's best policy environment — bullish." :
+              hiking ? "An active tightening cycle raises real yields — bearish." :
+              "The Fed is on hold — policy is not actively pushing gold either way.",
+    };
+  }
+  // central-bank gold buying: a documented multi-year regime, updated quarterly
+  scoreFactors.cb = {
+    s: 1, w: 1.5, mag: 1.5, structural: true, name: "CB gold buying",
+    label: "Central-bank gold buying: ~1,000t/yr regime intact (as of mid-2026)",
+    reason: "Reserve diversification away from the dollar has provided a steady structural bid since 2022 — bullish, but slow-moving (World Gold Council updates quarterly).",
+  };
+  // seasonality: gold's recurring calendar tendencies (weak but real)
+  const SEASON = [0.8, 0.5, -0.5, 0, -0.2, -0.4, 0.4, 0.8, 0.6, 0, 0.3, 0.4];
+  const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const mI = new Date().getMonth();
+  const sv = SEASON[mI];
+  scoreFactors.season = {
+    s: sv > 0.2 ? 1 : sv < -0.2 ? -1 : 0, w: 0.5, mag: Math.abs(sv), structural: true,
+    name: "Seasonality",
+    label: `Seasonality: ${monthNames[mI]} is historically ${sv > 0.2 ? "one of gold's stronger months" : sv < -0.2 ? "one of gold's weaker months" : "seasonally neutral"}`,
+    reason: "Recurring calendar patterns (Asian festival and wedding demand, the January effect) are real but weak — a tiebreaker, never a reason to trade on its own.",
+  };
+}
 
 /* ---------- panel 1: real yields vs gold ---------- */
 
@@ -394,6 +442,21 @@ function finishRyPanel(spotPrice) {
   };
   const [t1, c1] = tag(scoreFactors.ry.s);
   badge("ryBadge", t1.replace(/&#\d+; /, "").toUpperCase() + " FOR GOLD", c1);
+
+  // price trend factor: the market's own verdict (50 vs 200-day averages)
+  const daily = gold.filter(g => g.t > Date.now() - 400 * 86400000);
+  if (daily.length > 210) {
+    const avg = n => daily.slice(-n).reduce((sum, p) => sum + p.v, 0) / n;
+    const ma50 = avg(50), ma200 = avg(200), px = daily[daily.length - 1].v;
+    const ms = px > ma200 && ma50 > ma200 ? 1 : px < ma200 && ma50 < ma200 ? -1 : 0;
+    scoreFactors.mom = {
+      s: ms, w: 2, mag: Math.min(3, Math.abs(px / ma200 - 1) * 20), name: "Price trend",
+      label: `Price trend: $${Math.round(px).toLocaleString()} vs 200-day average $${Math.round(ma200).toLocaleString()} (${fmtSign((px / ma200 - 1) * 100)}%)`,
+      reason: ms > 0 ? "Price is above a rising long-term average — an established uptrend attracts momentum flows; bullish until broken." :
+              ms < 0 ? "Price is below a falling long-term average — a downtrend is bearish until decisively reclaimed." :
+              "Price is straddling its long-term average — the trend itself gives no signal right now.",
+    };
+  }
 
   document.getElementById("ryStats").innerHTML = `
     <div class="stat"><div class="v goldc" id="spotVal">$${spot.toFixed(1)}</div><div class="k">gold spot (live &middot; updates every 15s)</div></div>
@@ -819,7 +882,7 @@ async function loadNewsSentiment() {
     if (!r.ok) throw new Error("news HTTP " + r.status);
     articles = (await r.json()).articles || [];
   }
-  let bull = 0, bear = 0, weighted = 0;
+  let bull = 0, bear = 0, weighted = 0, geoEsc = 0, geoCalm = 0;
   const seen = new Set();
   for (const a of articles) {
     const k = (a.title || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 60);
@@ -828,8 +891,22 @@ async function loadNewsSentiment() {
     const an = analyzeImpact(a.title);
     if (an.v === "bull") { bull++; weighted += an.strength; }
     else if (an.v === "bear") { bear++; weighted -= an.strength; }
+    if (an.tag === "Geopolitics") {
+      if (an.v === "bull") geoEsc++;
+      else if (an.v === "bear") geoCalm++;
+    }
   }
   if (!seen.size) throw new Error("no readable headlines");
+
+  // geopolitical temperature as its own factor (safe-haven channel)
+  const gs = geoEsc - geoCalm >= 3 ? 1 : geoCalm - geoEsc >= 2 ? -1 : 0;
+  scoreFactors.geo = {
+    s: gs, w: 1.5, mag: Math.min(3, geoEsc * 0.5), name: "Geopolitics",
+    label: `Geopolitical risk: ${geoEsc} escalation vs ${geoCalm} de-escalation stories (24h)`,
+    reason: gs > 0 ? "The tape is dominated by escalation — safe-haven demand is live; bullish while tension builds." :
+            gs < 0 ? "De-escalation stories dominate — the fear premium is unwinding; bearish at the margin." :
+            "No clear escalation or calm — geopolitics isn't the driver today.",
+  };
   const net = weighted / (3 * seen.size); // -1..1
   const s = net > 0.08 ? 1 : net < -0.08 ? -1 : 0;
   scoreFactors.news = {
@@ -846,38 +923,60 @@ async function loadNewsSentiment() {
 /* ---------- overall gold bias ---------- */
 
 function renderScorecard() {
-  const fs = [scoreFactors.ry, scoreFactors.usd, scoreFactors.cot, scoreFactors.news].filter(Boolean);
+  // every scoring factor, with its weight in the overall verdict
+  const DEFAULT_W = { ry: 3, usd: 2, fed: 2, mom: 2, geo: 1.5, cb: 1.5, news: 1, cot: 1, season: 0.5 };
+  const fs = Object.entries(scoreFactors)
+    .filter(([, f]) => f)
+    .map(([k, f]) => ({ ...f, w: f.w || DEFAULT_W[k] || 1 }));
   if (!fs.length) {
     document.getElementById("scoreBody").innerHTML =
       `<div class="err">No panels could load — check your connection and refresh.</div>`;
     return;
   }
-  const score = fs.reduce((s, f) => s + f.s, 0);
+
+  // weighted aggregate, normalised to -1..+1
+  const totalW = fs.reduce((s, f) => s + f.w, 0);
+  const net = fs.reduce((s, f) => s + f.s * f.w, 0) / totalW;
   const [text, cls] =
-    score >= 2 ? ["BULLISH for gold", "bull"] :
-    score === 1 ? ["MILDLY BULLISH for gold", "bull"] :
-    score === 0 ? ["MIXED / NEUTRAL for gold", "neut"] :
-    score === -1 ? ["MILDLY BEARISH for gold", "bear"] :
+    net >= 0.35 ? ["BULLISH for gold", "bull"] :
+    net >= 0.12 ? ["MILDLY BULLISH for gold", "bull"] :
+    net > -0.12 ? ["MIXED / NEUTRAL for gold", "neut"] :
+    net > -0.35 ? ["MILDLY BEARISH for gold", "bear"] :
     ["BEARISH for gold", "bear"];
   badge("scoreBadge", text, cls);
 
-  // rank the factors by how forcefully each is acting on gold right now
-  const ranked = [...fs].sort((a, b) => (b.mag || 0) - (a.mag || 0));
+  const live = fs.filter(f => !f.structural);
+  const structural = fs.filter(f => f.structural);
+  const ranked = [...live].sort((a, b) => (b.mag || 0) - (a.mag || 0));
   const maxMag = Math.max(0.15, ...ranked.map(f => f.mag || 0));
   const strengthWord = m => m >= 2.2 ? "strong" : m >= 1.2 ? "moderate" : "faint";
   const dirWord = f => f.s > 0 ? `<span class="up">bullish</span>` :
                        f.s < 0 ? `<span class="down">bearish</span>` :
                        `<span class="muted">neutral</span>`;
   const top = ranked[0];
+  const factorLi = (f, chip) => {
+    const [t, c] = tag(f.s);
+    return `<li><span class="factor-tag ${c}">${t}</span><span><b>${f.label}</b>${chip}
+      &mdash; ${colorizeBias(f.reason)}</span></li>`;
+  };
 
-  document.getElementById("scoreBody").innerHTML =
-    `<ul class="factors">${fs.map(f => {
-      const [t, c] = tag(f.s);
-      return `<li><span class="factor-tag ${c}">${t}</span><span><b>${f.label}</b> &mdash; ${colorizeBias(f.reason)}</span></li>`;
-    }).join("")}</ul>
+  document.getElementById("scoreBody").innerHTML = `
+    <div class="gauge"><div class="gauge-needle" style="left:${((net + 1) / 2 * 100).toFixed(1)}%"></div></div>
+    <div class="gauge-labels"><span>strongly bearish</span><span>neutral</span><span>strongly bullish</span></div>
+    <p class="explain" style="margin-top:2px">Weighted score: <b>${(net >= 0 ? "+" : "") + (net * 100).toFixed(0)}</b>
+      on a &minus;100&hellip;+100 scale, across ${fs.length} scoring factors.</p>
+
+    <div class="factor-group">Measured live</div>
+    <ul class="factors">${live.map(f => factorLi(f, ` <span class="src-chip src-live">LIVE</span>`)).join("")}</ul>
+
+    <div class="factor-group">Structural &amp; background</div>
+    <ul class="factors">${structural.map(f => factorLi(f, ` <span class="src-chip src-struct">STRUCTURAL</span>`)).join("")}
+    ${INFO_FACTORS.map(([name, note]) => `
+      <li><span class="factor-tag neut">&#9679; Not scored</span><span><b>${name}</b>
+        <span class="src-chip src-info">NOT MEASURED</span> &mdash; ${colorizeBias(note)}</span></li>`).join("")}</ul>
 
     <p class="explain" style="margin-top:16px"><b>What's driving gold right now</b> &mdash;
-    each factor ranked by how forcefully it is currently acting (signal strength, not just direction):</p>
+    live factors ranked by how forcefully each is currently acting (signal strength, not just direction):</p>
     ${ranked.map(f => `
       <div class="rank-row">
         <span class="rk-name">${f.name}</span>
@@ -885,12 +984,13 @@ function renderScorecard() {
           style="width:${Math.round((f.mag || 0) / maxMag * 100)}%"></div></div>
         <span class="rk-val">${strengthWord(f.mag || 0)} · ${dirWord(f)}</span>
       </div>`).join("")}
-    <p class="explain"><b>Most prominent driver right now: ${top.name}</b> &mdash; ${colorizeBias(top.reason)}</p>
+    <p class="explain"><b>Most prominent driver right now: ${top ? top.name : "—"}</b>${top ? ` &mdash; ${colorizeBias(top.reason)}` : ""}</p>
 
-    <p class="explain">The verdict sums all ${fs.length} factors${fs.length < 4 ?
-      " (a factor failed to load and is excluded)" : ""}. Real yields carry the most weight
-    conceptually; the dollar, positioning and the news tape confirm or contradict. When they
-    all point the same way, the signal has historically been at its most reliable.</p>`;
+    <p class="explain">Weights: real yields count most (×3); Fed direction, the dollar and price
+    trend ×2; geopolitics and central-bank buying ×1.5; news tape and positioning ×1; seasonality
+    ×0.5. Factors with no free live data source are listed above so nothing is hidden — but they
+    don't score. When the heavyweights all point the same way, the signal has historically been
+    at its most reliable. Not investment advice.</p>`;
 }
 
 /* ---------- live price ticker ---------- */
@@ -934,6 +1034,7 @@ async function tickLive() {
 
 async function loadAll() {
   await loadStaticData();
+  setStructuralFactors();
   const jobs = [
     loadRealYieldPanel().catch(e => {
       document.getElementById("ryStats").innerHTML = "";

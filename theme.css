@@ -108,6 +108,30 @@ thead th { position: sticky; top: 0; }
 }
 @keyframes badgePulse { from { opacity: 1; } to { opacity: 0.5; } }
 
+/* sentiment gauge (overall gold bias) */
+.gauge {
+  position: relative; height: 14px; border-radius: 7px; margin: 14px 0 4px;
+  background: linear-gradient(90deg, #f87171 0%, #8b6a4a 35%, #4b5568 50%, #4a7a63 65%, #34d399 100%);
+}
+.gauge-needle {
+  position: absolute; top: -5px; width: 4px; height: 24px;
+  background: #fff; border-radius: 2px; transform: translateX(-50%);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.7);
+  transition: left 0.6s ease;
+}
+.gauge-labels { display: flex; justify-content: space-between; font-size: 11px; color: #8b95ab; margin-bottom: 8px; }
+.factor-group {
+  font-size: 12px; font-weight: 700; color: #8b95ab; text-transform: uppercase;
+  letter-spacing: 0.05em; margin-top: 16px;
+}
+.src-chip {
+  display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: 0.06em;
+  padding: 1px 7px; border-radius: 4px; vertical-align: middle; margin-left: 6px;
+}
+.src-live { background: rgba(52, 211, 153, 0.12); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.5); }
+.src-struct { background: rgba(96, 165, 250, 0.12); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.5); }
+.src-info { background: rgba(139, 149, 171, 0.12); color: #8b95ab; border: 1px solid rgba(139, 149, 171, 0.45); }
+
 /* factor ranking bars (overall gold bias) */
 .rank-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; }
 .rank-row .rk-name { flex: 0 0 170px; }
