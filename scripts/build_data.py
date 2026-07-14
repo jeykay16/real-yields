@@ -102,8 +102,29 @@ def build():
             f"?startPeriod=1989-01&format=csvfile")) if r.get("FREQ") == "M"}
         out["usRealYield"] = [{"p": p, "v": round(y[p] - c[p], 4)}
                               for p in sorted(y) if p in c]
+        out["usCpi"] = [{"p": p, "v": round(c[p], 4)} for p in sorted(c)][-30:]
     except Exception as e:
         print("usRealYield failed:", e, file=sys.stderr)
+
+    # --- IMF: monthly oil price index (petroleum average spot) ---------------
+    try:
+        rows = fetch("https://api.imf.org/external/sdmx/2.1/data/IMF.RES,PCPS,9.0.0/"
+                     "G001.POILAPSP.INDEX.M?startPeriod=2023",
+                     accept="application/vnd.sdmx.data+csv")
+        oil = []
+        for line in rows.split("\n"):
+            cells = line.split(",")
+            if len(cells) > 6 and cells[4] == "M" and re.match(r"^\d{4}-M\d{2}$", cells[5]):
+                try:
+                    yy, mm = cells[5].split("-M")
+                    oil.append({"p": f"{yy}-{mm}", "v": round(num(cells[6]), 4)})
+                except ValueError:
+                    pass
+        oil.sort(key=lambda g: g["p"])
+        if oil:
+            out["oil"] = oil[-30:]
+    except Exception as e:
+        print("oil failed:", e, file=sys.stderr)
 
     # --- BIS: policy rates reduced per bank ---------------------------------
     try:

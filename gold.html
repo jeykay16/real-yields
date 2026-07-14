@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪙</text></svg>">
-<title>Gold Drivers — XAU/USD</title>
+<title>Gold Analysis — Gold Drivers (XAU/USD)</title>
 <link rel="preconnect" href="https://sdmx.oecd.org">
 <link rel="preconnect" href="https://api.binance.com">
 <link rel="preconnect" href="https://api.imf.org">
@@ -113,6 +113,7 @@
   <div class="sub">The three forces that move gold, measured live: real yields, the US dollar, and speculative positioning</div>
 
   <div class="nav">
+    <a class="brand" href="index.html">🪙 Gold Analysis</a>
     <a href="index.html">&larr; Real yields</a>
     <a href="meetings.html">Rate meetings</a>
     <span class="here">Gold drivers</span>
@@ -125,9 +126,10 @@
   <!-- Overall scorecard -->
   <div class="card" id="scorecard">
     <h2>&#129517; Overall gold bias &mdash; all signals combined <span class="badge neut" id="scoreBadge">&hellip;</span></h2>
-    <div class="cap" style="color:var(--muted);font-size:12px;margin-top:4px">Real yields &middot; the dollar &middot;
-      speculative positioning &middot; the live news tape &mdash; fused into one verdict, with each factor
-      ranked by how hard it is currently pushing</div>
+    <div class="cap" style="color:var(--muted);font-size:12px;margin-top:4px">Real yields &middot; Fed direction &middot;
+      the dollar &middot; price trend &middot; inflation &middot; oil &middot; geopolitics &middot; positioning &middot; the news tape
+      &middot; central-bank buying &middot; seasonality &mdash; fused into separate short-term and long-term verdicts,
+      with every factor ranked by how hard it is currently pushing</div>
     <div class="loading-msg" id="scoreBody">Waiting for the panels below to load&hellip;</div>
   </div>
 
@@ -227,8 +229,8 @@ const badge = (el, text, cls) => {
 const tag = s => s > 0 ? ["&#9650; Bullish", "pos"] : s < 0 ? ["&#9660; Bearish", "neg"] : ["&#9679; Neutral", "neut"];
 
 // factors gathered by the panels + live news flow, combined in the scorecard
-const scoreFactors = { ry: null, usd: null, cot: null, news: null,
-                       mom: null, fed: null, geo: null, cb: null, season: null };
+const scoreFactors = { ry: null, usd: null, cot: null, news: null, mom: null,
+                       fed: null, geo: null, oil: null, infl: null, cb: null, season: null };
 
 // factors that genuinely matter for gold but have no free live data source —
 // declared openly instead of silently omitted
@@ -264,6 +266,36 @@ function setStructuralFactors() {
     label: "Central-bank gold buying: ~1,000t/yr regime intact (as of mid-2026)",
     reason: "Reserve diversification away from the dollar has provided a steady structural bid since 2022 — bullish, but slow-moving (World Gold Council updates quarterly).",
   };
+  // oil trend: the inflation-expectations and geopolitical-risk channel
+  const oil = STATIC && STATIC.oil;
+  if (oil && oil.length >= 4) {
+    const last = oil[oil.length - 1], prior = oil[oil.length - 4];
+    const chg = (last.v / prior.v - 1) * 100;
+    const os = chg > 10 ? 1 : chg < -10 ? -1 : 0;
+    scoreFactors.oil = {
+      s: os, w: 1, mag: Math.min(3, Math.abs(chg) / 10), name: "Oil prices",
+      label: `Oil prices: ${fmtSign(chg)}% over 3 months (to ${last.p})`,
+      reason: os > 0 ? "Rising oil feeds inflation expectations and usually signals geopolitical stress — bullish for gold while central banks can't hike into it." :
+              os < 0 ? "Falling oil drains inflation expectations and removes a prop from gold's inflation-hedge bid — bearish at the margin." :
+              "Oil is rangebound — not moving the inflation needle either way.",
+    };
+  }
+  // US inflation trend: the hedge-demand channel (the rates channel is counted via real yields)
+  const cpi = STATIC && STATIC.usCpi;
+  if (cpi && cpi.length >= 7) {
+    const nowC = cpi[cpi.length - 1], prior = cpi[cpi.length - 7];
+    const d6 = nowC.v - prior.v;
+    const fedHiking = scoreFactors.fed && scoreFactors.fed.s < 0;
+    const is = d6 > 0.4 && !fedHiking ? 1 : 0;
+    scoreFactors.infl = {
+      s: is, w: 1.5, mag: Math.min(3, Math.abs(d6) * 1.5), name: "Inflation trend",
+      label: `US inflation: ${nowC.v.toFixed(1)}% and ${d6 > 0.4 ? "rising" : d6 < -0.4 ? "falling" : "stable"} (${fmtSign(d6)}pp / 6m)`,
+      reason: is > 0 ? "Inflation is climbing while the Fed cuts or holds — real yields get crushed and hedge demand rises; gold's classic bullish regime." :
+              d6 > 0.4 ? "Inflation is rising but the Fed is fighting it with hikes — the two effects offset; two-sided until one wins." :
+              d6 < -0.4 ? "Inflation is cooling — its effect on gold flows through the rate-cut channel, which is already counted in real yields and Fed direction above." :
+              "Inflation is stable — not adding hedge demand beyond what real yields capture.",
+    };
+  }
   // seasonality: gold's recurring calendar tendencies (weak but real)
   const SEASON = [0.8, 0.5, -0.5, 0, -0.2, -0.4, 0.4, 0.8, 0.6, 0, 0.3, 0.4];
   const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -923,27 +955,41 @@ async function loadNewsSentiment() {
 /* ---------- overall gold bias ---------- */
 
 function renderScorecard() {
-  // every scoring factor, with its weight in the overall verdict
-  const DEFAULT_W = { ry: 3, usd: 2, fed: 2, mom: 2, geo: 1.5, cb: 1.5, news: 1, cot: 1, season: 0.5 };
-  const fs = Object.entries(scoreFactors)
-    .filter(([, f]) => f)
-    .map(([k, f]) => ({ ...f, w: f.w || DEFAULT_W[k] || 1 }));
+  // two horizons, two weight sets: fast factors dominate the short term,
+  // slow structural forces dominate the long term
+  const W_ST = { mom: 3, news: 2, geo: 2, usd: 2, oil: 1.5, cot: 1.5, ry: 1, fed: 1, infl: 1, cb: 0.5, season: 0.5 };
+  const W_LT = { ry: 3, fed: 2.5, cb: 2, infl: 1.5, usd: 1.5, mom: 1, oil: 1, geo: 0.5, cot: 0.5, news: 0.5, season: 0.5 };
+  const entries = Object.entries(scoreFactors).filter(([, f]) => f);
+  const fs = entries.map(([k, f]) => ({ ...f, key: k }));
   if (!fs.length) {
     document.getElementById("scoreBody").innerHTML =
       `<div class="err">No panels could load — check your connection and refresh.</div>`;
     return;
   }
 
-  // weighted aggregate, normalised to -1..+1
-  const totalW = fs.reduce((s, f) => s + f.w, 0);
-  const net = fs.reduce((s, f) => s + f.s * f.w, 0) / totalW;
-  const [text, cls] =
-    net >= 0.35 ? ["BULLISH for gold", "bull"] :
-    net >= 0.12 ? ["MILDLY BULLISH for gold", "bull"] :
-    net > -0.12 ? ["MIXED / NEUTRAL for gold", "neut"] :
-    net > -0.35 ? ["MILDLY BEARISH for gold", "bear"] :
-    ["BEARISH for gold", "bear"];
-  badge("scoreBadge", text, cls);
+  const netOf = W => {
+    const tw = fs.reduce((s, f) => s + (W[f.key] || 1), 0);
+    return fs.reduce((s, f) => s + f.s * (W[f.key] || 1), 0) / tw;
+  };
+  const verdictOf = net =>
+    net >= 0.35 ? ["BULLISH", "bull"] :
+    net >= 0.12 ? ["MILDLY BULLISH", "bull"] :
+    net > -0.12 ? ["MIXED / NEUTRAL", "neut"] :
+    net > -0.35 ? ["MILDLY BEARISH", "bear"] :
+    ["BEARISH", "bear"];
+  const netST = netOf(W_ST), netLT = netOf(W_LT);
+  const [stText, stCls] = verdictOf(netST);
+  const [ltText, ltCls] = verdictOf(netLT);
+  badge("scoreBadge", `ST: ${stText} · LT: ${ltText}`,
+    stCls === ltCls ? stCls : "neut");
+  const gaugeBlock = (title, net, text, cls) => `
+    <div style="display:flex;align-items:baseline;gap:10px;margin-top:12px">
+      <b style="font-size:13px">${title}</b>
+      <span class="badge ${cls}" style="font-size:12px;padding:2px 10px">${text} for gold</span>
+      <span class="muted" style="font-size:12px">score ${(net >= 0 ? "+" : "") + (net * 100).toFixed(0)} / ±100</span>
+    </div>
+    <div class="gauge"><div class="gauge-needle" style="left:${((net + 1) / 2 * 100).toFixed(1)}%"></div></div>
+    <div class="gauge-labels"><span>strongly bearish</span><span>neutral</span><span>strongly bullish</span></div>`;
 
   const live = fs.filter(f => !f.structural);
   const structural = fs.filter(f => f.structural);
@@ -961,10 +1007,11 @@ function renderScorecard() {
   };
 
   document.getElementById("scoreBody").innerHTML = `
-    <div class="gauge"><div class="gauge-needle" style="left:${((net + 1) / 2 * 100).toFixed(1)}%"></div></div>
-    <div class="gauge-labels"><span>strongly bearish</span><span>neutral</span><span>strongly bullish</span></div>
-    <p class="explain" style="margin-top:2px">Weighted score: <b>${(net >= 0 ? "+" : "") + (net * 100).toFixed(0)}</b>
-      on a &minus;100&hellip;+100 scale, across ${fs.length} scoring factors.</p>
+    ${gaugeBlock("Short term (days–weeks)", netST, stText, stCls)}
+    ${gaugeBlock("Long term (months+)", netLT, ltText, ltCls)}
+    <p class="explain" style="margin-top:6px">Short term weights the fast movers (price trend,
+    news tape, geopolitics, the dollar, oil); long term weights the slow forces (real yields,
+    Fed direction, central-bank buying, inflation). ${fs.length} factors scored.</p>
 
     <div class="factor-group">Measured live</div>
     <ul class="factors">${live.map(f => factorLi(f, ` <span class="src-chip src-live">LIVE</span>`)).join("")}</ul>
@@ -986,11 +1033,12 @@ function renderScorecard() {
       </div>`).join("")}
     <p class="explain"><b>Most prominent driver right now: ${top ? top.name : "—"}</b>${top ? ` &mdash; ${colorizeBias(top.reason)}` : ""}</p>
 
-    <p class="explain">Weights: real yields count most (×3); Fed direction, the dollar and price
-    trend ×2; geopolitics and central-bank buying ×1.5; news tape and positioning ×1; seasonality
-    ×0.5. Factors with no free live data source are listed above so nothing is hidden — but they
-    don't score. When the heavyweights all point the same way, the signal has historically been
-    at its most reliable. Not investment advice.</p>`;
+    <p class="explain">Long-term weights: real yields ×3, Fed direction ×2.5, central-bank buying ×2,
+    inflation and the dollar ×1.5, the rest lighter. Short-term weights: price trend ×3, news tape,
+    geopolitics and the dollar ×2, oil and positioning ×1.5, the rest lighter. Factors with no free
+    live data source are listed above so nothing is hidden — but they don't score. When both horizons
+    and the heavyweights agree, the signal has historically been at its most reliable. Not
+    investment advice.</p>`;
 }
 
 /* ---------- live price ticker ---------- */

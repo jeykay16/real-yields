@@ -108,6 +108,30 @@ thead th { position: sticky; top: 0; }
 }
 @keyframes badgePulse { from { opacity: 1; } to { opacity: 0.5; } }
 
+/* live indicators & new-update toast */
+.live-dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  background: #f87171; margin-right: 7px; vertical-align: 1px;
+  animation: liveBlink 1.2s ease-in-out infinite;
+}
+@keyframes liveBlink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 7px rgba(248, 113, 113, 0.9); }
+  50% { opacity: 0.35; box-shadow: none; }
+}
+#toast {
+  position: fixed; right: 22px; bottom: 22px; z-index: 100;
+  background: #16203a; border: 1px solid #60a5fa; color: #e8ecf4;
+  padding: 11px 20px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  cursor: pointer; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
+  display: none; animation: toastIn 0.3s ease;
+}
+#toast:hover { border-color: #8fc0ff; }
+@keyframes toastIn { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* site brand in the nav */
+.nav .brand { color: #f0c34e !important; font-weight: 800; letter-spacing: 0.01em; }
+.nav .brand::after { display: none; }
+
 /* sentiment gauge (overall gold bias) */
 .gauge {
   position: relative; height: 14px; border-radius: 7px; margin: 14px 0 4px;

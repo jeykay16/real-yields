@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪙</text></svg>">
-<title>Market News &amp; Economic Calendar</title>
+<title>Gold Analysis — Market News & Economic Calendar</title>
 <link rel="preconnect" href="https://api.gdeltproject.org">
 <link rel="preconnect" href="https://platform.twitter.com">
 <style>
@@ -109,6 +109,7 @@
   <div class="sub">What's scheduled to move markets this week, and what's moving them right now</div>
 
   <div class="nav">
+    <a class="brand" href="index.html">🪙 Gold Analysis</a>
     <a href="index.html">&larr; Real yields</a>
     <a href="meetings.html">Rate meetings</a>
     <a href="gold.html">Gold drivers</a>
@@ -128,7 +129,7 @@
 
   <!-- live squawk -->
   <div class="card">
-    <h2>&#9889; Live squawk &mdash; the fast X accounts, mirrored</h2>
+    <h2><span class="live-dot"></span>&#9889; Live squawk &mdash; the fast X accounts, mirrored</h2>
     <div class="cap">Walter Bloomberg, Tree News, Financial Juice, ZeroHedge and MarketFeed post to
       public Telegram mirrors within seconds of X &mdash; shown here without needing an X login,
       refreshed every minute <span id="squawkUpd"></span></div>
@@ -152,7 +153,7 @@
 
   <!-- live headlines -->
   <div class="card">
-    <h2>&#128240; Live market-moving headlines</h2>
+    <h2><span class="live-dot"></span>&#128240; Live market-moving headlines</h2>
     <div class="cap">Latest coverage from thousands of news sources worldwide, indexed roughly every
       15 minutes &middot; click a headline to read the full story at the source</div>
     <div class="chips" id="topicChips">
@@ -199,6 +200,8 @@
     &amp; <a href="https://data.bis.org" style="color:var(--accent)">BIS</a>
     &middot; <a href="https://github.com/jeykay16/real-yields" style="color:var(--accent)">Source code</a></div>
 </div>
+
+<div id="toast"></div>
 
 <script src="impact.js"></script>
 <script>
@@ -639,14 +642,46 @@ renderXEmbed();
 let lastNewsSuccess = null;
 let lastCycle = Date.now();
 
+/* ---------- new-update announcements ---------- */
+
+let titleNewCount = 0;
+const baseTitle = document.title;
+
+function announceNew() {
+  const fresh = [...document.querySelectorAll(".news-item.fresh:not([data-toasted])")];
+  if (!fresh.length) return;
+  fresh.forEach(f => f.dataset.toasted = "1");
+  titleNewCount += fresh.length;
+  if (document.hidden) document.title = `(${titleNewCount}) ${baseTitle}`;
+  const t = document.getElementById("toast");
+  t.innerHTML = `&#128308; ${fresh.length} new market update${fresh.length > 1 ? "s" : ""} &mdash; click to view`;
+  t.style.display = "block";
+  clearTimeout(announceNew._t);
+  announceNew._t = setTimeout(() => { t.style.display = "none"; }, 9000);
+  t.onclick = () => {
+    t.style.display = "none";
+    const first = document.querySelector(".news-item.fresh");
+    if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { titleNewCount = 0; document.title = baseTitle; }
+});
+// watch for freshly rendered items in any section
+new MutationObserver(() => announceNew())
+  .observe(document.querySelector(".wrap"), { childList: true, subtree: true });
+
 computeFocus(); // instant paint from the cached analysis, refreshed on each fetch
 (async () => {
   await Promise.all([loadCalendar(), loadNews(), loadSquawk()]);
 })();
-setInterval(() => { if (!document.hidden) loadSquawk(); }, 60 * 1000);
+// news and squawk keep updating even in background tabs (browsers throttle the
+// timers naturally) so sudden headlines are waiting — and counted in the tab
+// title — the moment you come back
+setInterval(() => loadSquawk(), 60 * 1000);
 setInterval(() => {
   lastCycle = Date.now();
-  if (!document.hidden) loadNews(true);
+  loadNews(true); // runs in background tabs too — sudden news must not wait
 }, 60 * 1000);
 
 // live status line: shows the last successful update and a countdown to the next check
