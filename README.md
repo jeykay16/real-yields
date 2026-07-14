@@ -1,4 +1,4 @@
-# Real Yields of Major Currencies
+# Gold Analysis
 
 Live dashboard of the **real yields** (10-year government bond yield minus latest
 year-over-year CPI inflation) of 17 major currencies, with a data-driven
